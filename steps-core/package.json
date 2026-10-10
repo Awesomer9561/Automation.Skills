@@ -1,0 +1,17 @@
+{
+  "name": "steps-core",
+  "version": "0.1.0",
+  "description": "Plain-text steps -> IR -> Playwright spec, driven by the consuming repo's steps.config.js",
+  "main": "index.js",
+  "type": "commonjs",
+  "bin": {
+    "steps-gen": "cli/gen.js",
+    "steps-probe": "cli/probe.js",
+    "steps-ids": "cli/ids.js"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
