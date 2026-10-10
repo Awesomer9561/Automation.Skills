@@ -13,8 +13,6 @@ const DEFAULTS = {
     packs: [],
     helpers: {},
     timeouts: { test: 120000, multiApp: 360000 },
-    probe: { env: 'dev' },
-    envName: () => process.env.TEST_ENV,
 };
 
 function findRoot(start) {
@@ -33,7 +31,6 @@ function loadConfig(cwd = process.cwd()) {
         ...DEFAULTS,
         ...user,
         timeouts: { ...DEFAULTS.timeouts, ...user.timeouts },
-        probe: { ...DEFAULTS.probe, ...user.probe },
         root,
         abs: (p) => path.resolve(root, p),
     };

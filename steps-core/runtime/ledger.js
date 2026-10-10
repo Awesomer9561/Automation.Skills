@@ -13,7 +13,8 @@ function recordCreated(type, key) {
     const info = test.info();
     const entry = {
         at: new Date().toISOString(),
-        env: config.envName(),
+        // where the data lives: the default app's root URL (the env var named in steps.config.js apps)
+        url: process.env[(config.apps[config.defaultApp] || {}).urlEnv],
         spec: path.relative(config.root, info.file).replace(/\\/g, '/'),
         test: info.title,
         type,

@@ -51,10 +51,9 @@ the repo's env module), and run `npm install`. Don't improvise a generator.
      `wait till #previous-id disappears` when its ids are not known yet). `wait till network is idle` alone can fire
      before a client-side navigation and record the previous page; use it only as an extra wait for lists that load
      after the page appears. Hidden inputs (file inputs) never become visible: wait on their visible button instead.
-   - Probes are read-only against the env the rules name as source of truth (`npm run probe` refuses unless the
-     repo's active environment is `steps.config.js` `probe.env`, or `--env <name>` confirms another): navigate, open,
-     cancel; don't save or submit. Where reaching a page requires
-     creating something (e.g. a new account), tell the user what will be created first.
+   - Probes are read-only and run against whatever URLs and credentials the repo has set (check they point where
+     the rules say page knowledge comes from): navigate, open, cancel; don't save or submit. Where reaching a page
+     requires creating something (e.g. a new account), tell the user what will be created first.
    - Run `npm run probe -- steps/probe_<flow>.steps.txt`, then check each page with `npm run gen:ids -- <page>`: its
      path and headings must be the page you meant, not the one before it. A probe that fails part-way kept the
      snapshots it reached; fix the steps and re-run.

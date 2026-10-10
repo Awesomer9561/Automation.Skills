@@ -8,10 +8,10 @@ configured: 2026-10-10
 
 Only what differs from or adds to `projects/_projects/probuy/rules.md`.
 
-- Apps: `supplier` (default, `SUPPLIER_URL`) and `company` (`COMPANY_URL`), from `.env`.
-- Local supplier portal: `http://localhost:5173` (the commented `SUPPLIER_URL` line in `.env`'s dev block).
-- Credentials: `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
-- *Verified on dev, 2026-10-10:* the `ADMIN_EMAIL` account has **not** finished supplier registration on dev. Signing in
+- Apps: `supplier` (default, `SUPPLIER_URL`), `company` (`COMPANY_URL`) and `admin` (`ADMIN_URL`), from `.env`.
+- Local supplier portal: the commented `SUPPLIER_URL` localhost line in `.env`'s dev block (5173 or 5174, see the family rules).
+- Credentials: one user per portal (see the family rules); supplier tests use `SUPPLIER_EMAIL` / `SUPPLIER_PASSWORD`.
+- *Verified on dev, 2026-10-10:* the account then in `ADMIN_EMAIL` (replaced 2026-10-11) had **not** finished supplier registration on dev. Signing in
   lands on the "Register Your Company" wizard (`/auth`, `#register-cr-input`, `#auth-logout-btn`), not the dashboard.
   Dashboard or profile tests on dev need a registered and approved supplier account; ask the user for one.
 - *Verified 2026-10-10:* the hosted dev build lags the local one. On hosted dev the wizard page has no

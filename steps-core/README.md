@@ -19,7 +19,7 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   and mapped to files by the repo's `helpers` config. Layers: core < project family pack
   (`../projects/_projects/<project>/pack.js`) < the repo's `steps.pack.js`.
 - **Config** (`steps.config.js`): `testsDir`, `knowledgeDir`, `ledger`, `apps` (`{ name: { urlEnv: 'ENV_VAR_WITH_ROOT_URL' } }`),
-  `defaultApp`, `probe.env`, `envName()`, `packs`, `helpers`, optional `timeouts`.
+  `defaultApp`, `packs`, `helpers`, optional `timeouts`. Runs use whatever the app URL variables hold.
 - **Runtime** (imported by generated specs as `steps-core/runtime/...`): `snapshot.js` (probe snapshots, no-op unless
   `PROBE=1`) and `ledger.js` (`recordCreated(type, key)` appends to the repo's local ledger). Both load the repo's own
   `@playwright/test`.
@@ -46,8 +46,6 @@ Clone `Automation.Skills` next to the repo, then in the repo:
 module.exports = {
     apps: { web: { urlEnv: 'WEB_URL' } },          // `portal <name>`; urlEnv: env var holding the root URL
     defaultApp: 'web',
-    probe: { env: 'dev' },                          // env that is the source of truth for page knowledge
-    envName: () => process.env.TEST_ENV,           // active environment (e.g. from .env)
     packs: [],                                      // e.g. require('../Automation.Skills/projects/_projects/<p>/pack')
     helpers: {},                                    // helper name -> repo module exporting it
 };

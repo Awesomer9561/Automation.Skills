@@ -18,10 +18,14 @@ the date given; everything else is a convention.
 
 ## Environments
 - **dev is the source of truth** for page knowledge and the default; `qa` exists too.
-- Each repo has one `.env` with a dev block and a commented-out qa block (`TEST_ENV` plus the portal URLs, e.g.
-  `SUPPLIER_URL`, `COMPANY_URL`); exactly one block is uncommented. No per-env files, no host tables in code.
+- Each repo has one `.env`: a dev block and a commented-out qa block of portal URLs (`SUPPLIER_URL`, `COMPANY_URL`,
+  `ADMIN_URL`; exactly one block uncommented), then one user per portal (`SUPPLIER_EMAIL`/`SUPPLIER_PASSWORD`,
+  `COMPANY_EMAIL`/`COMPANY_PASSWORD`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`). Tests and probes run on whatever is set: no
+  environment name, no per-env files, no host tables in code.
 - Local portals (Vite) run against dev's backend and dev's Keycloak: swap the app's URL line in the dev block for the
-  commented localhost one (e.g. `SUPPLIER_URL=http://localhost:5173`); `TEST_ENV` stays `dev`.
+  commented localhost one (e.g. `SUPPLIER_URL=http://localhost:5173`).
+- Local ports are not fixed: CompanyPortal pins `5173` and SupplierPortal uses Vite's default `5173`, so whichever
+  starts second gets `5174`. Confirm a port by the Keycloak realm on its login page (`Supplier-Dev`, `Company-Dev`).
 
 ## Identity (Keycloak, one realm per portal, e.g. `Supplier-Dev`)
 - *Verified on dev, supplier, 2026-10-10:* the portal root (`/`) redirects to the Keycloak login page:
