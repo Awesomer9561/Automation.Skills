@@ -7,11 +7,15 @@
   "bin": {
     "steps-gen": "cli/gen.js",
     "steps-probe": "cli/probe.js",
-    "steps-ids": "cli/ids.js"
+    "steps-ids": "cli/ids.js",
+    "steps-migrate": "cli/migrate.js"
   },
   "peerDependencies": {
     "@playwright/test": ">=1.40"
   },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "scripts": {
+    "test": "node --test test/"
+  }
 }

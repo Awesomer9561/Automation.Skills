@@ -12,8 +12,9 @@ The shared repo holding this skill (`SKILLS=$(cd -P ~/.claude/skills/steps-to-sp
 - `projects/`: rules per project family and per repo (Step 0). Project facts go there, never into this file.
 
 In a repo: steps live in `steps/<name>.steps.txt`; paths, apps, packs and helper mappings in `steps.config.js`; page
-knowledge in `knowledge/pages/<page>.json` (the real ids, labels, button texts, select options and headings of probed
-pages). Never guess ids; they come from there.
+knowledge in `knowledge/pages/<app>/<slug>.json`, one record per app + path shared by all steps files (the real ids,
+labels, button texts, select options and headings of probed pages; wizard steps and dialogs are `states` of a page),
+plus `knowledge/flows/<name>.json` for the order one steps file visited them in. Never guess ids; they come from there.
 
 ## Step 0: Load the rules
 
@@ -41,47 +42,53 @@ the repo's env module), and run `npm install`. Don't improvise a generator.
 
 ## Workflow
 
-1. **Check what is known.** For every page the flow touches, run `npm run gen:ids -- <page-or-id-fragment>` (no
-   argument lists everything). If a page is missing or its `capturedAt` is old enough that the UI may have changed,
-   probe it (step 2); otherwise go to step 3.
-2. **Probe the missing pages** (always first for a new page or flow):
-   - Write `steps/probe_<flow>.steps.txt`: steps that navigate to each page, plus `snapshot "page-name"` wherever the
-     catalog should record the screen. Snapshot each distinct state (view/edit mode, each wizard step, an open modal).
-   - Before each snapshot, wait on something **on the new page** (`wait till #id loads`, or
-     `wait till #previous-id disappears` when its ids are not known yet). `wait till network is idle` alone can fire
-     before a client-side navigation and record the previous page; use it only as an extra wait for lists that load
-     after the page appears. Hidden inputs (file inputs) never become visible: wait on their visible button instead.
-   - Probes are read-only and run against whatever URLs and credentials the repo has set (check they point where
-     the rules say page knowledge comes from): navigate, open, cancel; don't save or submit. Where reaching a page
-     requires creating something (e.g. a new account), tell the user what will be created first.
-   - Run `npm run probe -- steps/probe_<flow>.steps.txt`, then check each page with `npm run gen:ids -- <page>`: its
-     path and headings must be the page you meant, not the one before it. A probe that fails part-way kept the
-     snapshots it reached; fix the steps and re-run.
+QA writes steps the way they read the screen; the generator turns them into an id-only spec.
+
+1. **Write the steps** in `steps/<snake_case_name>.txt` (one per line, `# test: <title>` first). Name fields by their
+   label and buttons/links by their text, values in quotes or as `{variables}`:
+   ```
+   set {email} to unique "test{unique}@yopmail.com"
+   I open the supplier portal
+   I click "Sign up"
+   I enter "Abdul" in First name
+   I enter {email} in Email Address
+   I enter OTP "2024"
+   I select "Riyadh" in City
+   I check Terms and conditions
+   I upload "documents/file.pdf"
+   I click {orderNumber}          (a card in a list, e.g. the order created earlier in the test)
+   I should see "Account is in the verification process" up to 30 seconds
+   ```
+   `npm run gen:list` shows every phrasing (core, plus pack one-liners like `I login with supplier user`). Credentials:
+   `set {x} to env NAME`. A test that creates data ends with `record <type> {key}`. `#id` steps still work but are
+   rarely needed.
+2. **Probe the steps file itself:** `npm run probe -- steps/<name>.txt`. It runs the steps in a browser, finding each
+   field/button by its label/text in the live page, and records every page it reaches in that page's shared record (no
+   `snapshot` lines needed): a page another flow already recorded, such as login, is updated in place, not recreated;
+   re-probing replaces only this file's flow log. A probe runs the whole flow: if the
+   flow saves or creates something, the probe does too, so tell the user first. If it fails part-way, the pages
+   reached are kept; `test-results/` has the screenshot, fix the step and re-run.
+   - Check `npm run gen:ids -- <page or path>`: each page's path and headings should be the screen you expect.
    - Snapshots never store input values or link text. Still skim new `knowledge/pages/*.json` for anything personal
      before it is committed.
-3. **Write the steps** in `steps/<snake_case_name>.steps.txt` (one per line, `# test: <title>` first) using catalog
-   ids. `npm run gen:list` shows the vocabulary; rephrase to match it where the meaning is the same. Credentials:
-   `set {x} to env NAME`. Unique data: `set {x} to unique "..."`. A test that creates data ends with
-   `record <type> {key}`.
-   - To learn what the last page of a creating flow looks like, run the steps file once through `npm run probe` with a
-     temporary `snapshot` at the end (this creates the data, so say so), then replace it with real assertions.
-4. **Generate:** `npm run gen -- steps/<name>.steps.txt`. Never overwrite an existing spec without the user's OK
-   (`--force`); afterwards `npm run gen:check` must pass. A warning about an `#id` the catalog has never seen is a typo
-   or an un-probed page: fix it, don't ignore it.
-5. **Unmatched steps** (non-zero exit): run with `--report` to get them as JSON, then add a phrasing for each,
-   `{ usage, pattern, build }` where `build` returns IR ops (data, never code strings; op list in
-   `steps-core/intents.js`). Where it goes:
+3. **Generate:** `npm run gen -- steps/<name>.txt`. Each label/text is resolved to the recorded id, on the page the
+   test is on (the flow log keeps the pages in the order the probe reached them, so a name used on two pages resolves to the right
+   one; a steps file never probed can still use pages other files recorded). A name that
+   was never recorded, is misspelt, or is ambiguous is an error naming the problem; fix the step or re-probe. Never
+   overwrite an existing spec without the user's OK (`--force`); afterwards `npm run gen:check` must pass.
+4. **Unmatched steps** (non-zero exit): run with `--report` to get them as JSON. Rephrase to a listed phrasing where
+   the meaning is the same; otherwise add a phrasing `{ usage, pattern, build }` whose `build` returns IR ops (data,
+   never code strings; op list in `steps-core/intents.js`):
    - generic to any web app: the core, `$SKILLS/steps-core/intents.js`;
-   - shared by a project family: `$SKILLS/projects/_projects/<project>/pack.js`, listed in the repo's
-     `steps.config.js` `packs`;
+   - shared by a project family: `$SKILLS/projects/_projects/<project>/*.js`, listed in the repo's `steps.config.js` `packs`;
    - this repo only, one-offs included: the repo's `steps.pack.js`.
 
-   Prefer a `call` op to an existing helper mapped in `steps.config.js` `helpers`. Show the user the new entry before
-   adding it. Never hand-edit a generated spec: `npm run gen:check` fails on any spec that differs from its steps file.
-6. Conventions (plus the repo's CLAUDE.md and the rules): stable ids first, state-based waits (no fixed sleeps), no
+   Show the user the new entry before adding it. Never hand-edit a generated spec: `npm run gen:check` fails on any
+   spec that differs from its steps file.
+5. Conventions (plus the repo's CLAUDE.md and the rules): ids only in specs, state-based waits (no fixed sleeps), no
    `test.only`, credentials only through `process.env`, never read or print `.env*`, unique data per run.
-7. Run `npx playwright test tests/<name>.spec.js` against the environment active in the repo (see the rules) and
-   report the real result; if it fails, say so with the output. Tell the user when a run creates or changes data; `record` steps also
-   log it to the repo's local ledger.
-8. Don't commit unless asked, and follow the review process in the rules when you do. Probe steps files and
-   `knowledge/` are meant to be committed so the catalog is shared.
+6. Run `npx playwright test tests/<name>.spec.js` against the environment active in the repo (see the rules) and
+   report the real result; if it fails, say so with the output. Tell the user when a run creates or changes data;
+   `record` steps also log it to the repo's local ledger.
+7. Don't commit unless asked, and follow the review process in the rules when you do. Steps files and `knowledge/`
+   are meant to be committed so the recorded pages are shared.

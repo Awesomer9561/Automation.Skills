@@ -27,7 +27,20 @@ the date given; everything else is a convention.
 - Local ports are not fixed: CompanyPortal pins `5173` and SupplierPortal uses Vite's default `5173`, so whichever
   starts second gets `5174`. Confirm a port by the Keycloak realm on its login page (`Supplier-Dev`, `Company-Dev`).
 
+## Writing steps
+- QA writes steps by label and button text (`I enter "Abdul" in First name`, `I click "Get OTP"`), probes the steps
+  file (`npm run probe -- steps/<name>.txt`), then generates. Ids come from the recorded pages, never from QA.
+- *Verified on dev (local build), 2026-10-11:* `steps/supplier_registration.txt` in SupplierPortal.Automation probes
+  and generates end to end this way (8 pages; both "Sign up"s and both "Email Address" fields resolve correctly).
+
 ## Identity (Keycloak, one realm per portal, e.g. `Supplier-Dev`)
+- `pack.js` here gives every repo `I login with <supplier|company|admin> user` (opens that portal, signs in with
+  `<APP>_EMAIL`/`<APP>_PASSWORD`, waits for the login form to go). `supplier.js` adds supplier portal steps
+  (one-step register/sign up; sidebar navigation; order search/open/accept/cancel/status; logout); each id is tagged [dev]
+  (probed) or [qa] (from CompanyPortal.Automation, not yet probed). Repos list both in `steps.config.js` `packs`.
+- *Verified on dev (local build), 2026-10-10:* supplier order cards are `orders-list-<order number, lowercased>`
+  (QA specs use `order-card-<number>`); the order details page did not render for the probe account, so its ids
+  (`order-details-*`, `accept-order-modal-*`) are still unverified on dev.
 - *Verified on dev, supplier, 2026-10-10:* the portal root (`/`) redirects to the Keycloak login page:
   `#login-username-input`, `#login-password-input`, `#login-submit-btn`, sign-up link `#login-sign-up-link`.
   The sign-up form: `#register-first-name-input`, `-last-name-`, `-email-`, `-password-`, `-password-confirm-input`,

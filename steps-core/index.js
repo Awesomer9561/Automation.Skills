@@ -9,13 +9,13 @@ const { emit } = require('./emit-playwright');
 
 const baseName = (file) => path.basename(file).replace(/\.steps\.txt$|\.txt$|\.md$/, '');
 
-// opts.title overrides the title from the file (probe uses it).
+// opts.title overrides the title from the file; opts.probe compiles for `npm run probe` (both used by the probe CLI).
 function generate(file, config = loadConfig(), opts = {}) {
     const base = baseName(file);
     const parsed = parseSteps(fs.readFileSync(file, 'utf8'), base.replace(/[_-]+/g, ' '));
     const title = opts.title ? opts.title(parsed.title) : parsed.title;
     const source = path.relative(config.root, path.resolve(file)).replace(/\\/g, '/');
-    const { ir, unmatched, errors, warnings } = compile({ title, steps: parsed.steps, source }, config);
+    const { ir, unmatched, errors, warnings } = compile({ title, steps: parsed.steps, source }, config, { probe: opts.probe });
     const code = emit(ir, { testsDir: config.abs(config.testsDir), apps: config.apps });
     return { base, code, ir, unmatched, errors, warnings };
 }

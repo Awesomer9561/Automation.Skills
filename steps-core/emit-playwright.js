@@ -8,8 +8,11 @@ const VAR_RE = /\{(\w+)\}/g;
 const quote = (s) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 const escapeTemplate = (s) => s.replace(/[`\\]|\$\{/g, (c) => `\\${c}`);
 
-// A { v } value as a JS expression: plain string, bare variable, or template literal with ${var}s.
-function str({ v: text }) {
+// A value as a JS expression: { env } reads an env var; { v } is a plain string, bare variable, or template
+// literal with ${var}s.
+function str(value) {
+    if (value.env) return `process.env.${value.env} || missingEnv('${value.env}')`;
+    const { v: text } = value;
     const vars = [...text.matchAll(VAR_RE)].map((m) => m[1]);
     if (!vars.length) return quote(text);
     if (text === `{${vars[0]}}`) return vars[0];
@@ -21,6 +24,7 @@ const regex = (r) => `/${r.source}/${r.flags}`;
 function locator(t) {
     if (t.id) return `locator('#${t.id}')`;
     if (t.idPrefix) return `locator('[id^="${t.idPrefix}"]').first()`;
+    if (t.idValue) return `locator(${str({ v: `[id="${t.idValue.v}"${t.ignoreCase ? ' i' : ''}]` })}).first()`;
     if (t.text) return `getByText(${str(t.text)}).first()`;
     if (t.regex) return `getByText(${regex(t.regex)}).first()`;
     throw new Error(`unknown target ${JSON.stringify(t)}`);
@@ -46,6 +50,7 @@ function opLines(op, page, apps) {
     switch (op.op) {
         case 'click': return [`await ${at(op.target)}.click();`];
         case 'check': return [`await ${at(op.target)}.check();`];
+        case 'select': return [`await ${at(op.target)}.selectOption({ label: ${str(op.value)} });`];
         case 'fill': return [`await ${at(op.target)}.fill(${str(op.value)});`];
         case 'type': return [`await ${at(op.target)}.pressSequentially(${str(op.value)});`];
         case 'press': return [`await ${at(op.target)}.press(${quote(op.key)});`];
@@ -56,6 +61,7 @@ function opLines(op, page, apps) {
         case 'sleep': return [`await ${page}.waitForTimeout(${op.ms});`];
         case 'reload': return [`await ${page}.reload({ waitUntil: 'domcontentloaded' });`];
         case 'expectVisible': return [`await expect(${at(op.target)}).toBeVisible(${timeoutOpt(op.timeout)});`];
+        case 'expectText': return [`await expect(${at(op.target)}).toContainText(${str(op.value)}${timeoutOpt(op.timeout, ', ')});`];
         case 'expectHidden': return [`await expect(${at(op.target)}).toHaveCount(0${timeoutOpt(op.timeout, ', ')});`];
         case 'expectUrl': return [`await expect(${page}).toHaveURL(${regex(op.regex)});`];
         case 'goto': return [`await ${page}.goto(\`\${${apps[op.app].urlEnv}}${escapeTemplate(op.path)}\`, { waitUntil: 'domcontentloaded' });`];
@@ -86,10 +92,12 @@ function emit(ir, { testsDir, apps }) {
     };
     let page = 'page';
     let ctxVar = null;
+    let currentApp = null;
 
     for (const step of ir.steps) {
         if (step.kind === 'switchApp') {
-            if (!ir.multi) continue;
+            if (!ir.multi || step.app === currentApp) continue;
+            currentApp = step.app;
             if (ctxVar) body.push(`await ${ctxVar}.close();`, '');
             ctxVar = unique(`${step.app}Ctx`);
             page = unique(`${step.app}Page`);
@@ -107,9 +115,12 @@ function emit(ir, { testsDir, apps }) {
             // top level, so later steps can use the variable
             body.push(`// ${step.src.text}`, ...step.ops.flatMap((op) => opLines(op, page, apps)));
         } else {
+            // variables a step sets are declared before it, at test level, so later steps can use them
+            const vars = step.ops.filter((op) => op.op === 'setVar');
             body.push(
+                ...vars.flatMap((op) => opLines(op, page, apps)),
                 `await test.step(${quote(step.src.text)}, async () => {`,
-                ...step.ops.flatMap((op) => opLines(op, page, apps)).map((l) => `    ${l}`),
+                ...step.ops.filter((op) => op.op !== 'setVar').flatMap((op) => opLines(op, page, apps)).map((l) => `    ${l}`),
                 '});'
             );
         }
@@ -138,7 +149,9 @@ function emit(ir, { testsDir, apps }) {
 const allOps = (ir) => [...ir.preamble, ...ir.steps.flatMap((s) => s.ops)];
 // env variables holding the root URL of each app the test opens, in first-use order
 const urlVars = (ir, apps) => [...new Set(allOps(ir).filter((op) => op.op === 'goto' && apps[op.app]).map((op) => apps[op.app].urlEnv))];
-const usesEnv = (ir, apps) => urlVars(ir, apps).length > 0 || allOps(ir).some((op) => op.op === 'setVar' && op.gen.env);
+// any { env } value or env-backed variable, however deeply nested in an op
+const hasEnv = (node) => !!node && typeof node === 'object' && (typeof node.env === 'string' || Object.values(node).some(hasEnv));
+const usesEnv = (ir, apps) => urlVars(ir, apps).length > 0 || allOps(ir).some(hasEnv);
 
 const GENERATED_RE = /^\/\/ Generated from (\S+) by `npm run gen`/m;
 

@@ -5,9 +5,14 @@
 //       imports: [{ module (absolute path, or a package specifier for core runtime helpers), names }] }
 // kind: 'action' (wrapped in test.step), 'declare' (setVar only), 'switchApp', 'unmatched'.
 
+const path = require('path');
 const { buildRegistry } = require('./registry');
-const { loadCatalog, knownIds, isKnown } = require('./catalog');
-const { CORE_HELPERS } = require('./intents');
+const { loadCatalog, loadFlows, knownIds, isKnown } = require('./catalog');
+const { createResolver } = require('./resolve');
+const { CORE_HELPERS, PAGE, V } = require('./intents');
+
+// actions that touch an element; in a probe each is preceded by autoSnapshot so every page reached is recorded
+const ACTIONS = ['fill', 'type', 'click', 'check', 'select', 'upload'];
 
 const VAR_RE = /\{(\w+)\}/g;
 
@@ -26,9 +31,12 @@ function helpersOf(op) {
     return [];
 }
 
-function compile({ title, steps, source }, config) {
+// opts.probe: compiling for `npm run probe` (unknown labels are looked up at run time, pages are recorded)
+function compile({ title, steps, source }, config, opts = {}) {
     const registry = buildRegistry(config.packs);
     const catalog = loadCatalog(config);
+    const flow = path.basename(source).replace(/\.steps\.txt$|\.txt$|\.md$/, '');
+    const resolver = createResolver(catalog, { flowData: loadFlows(config)[flow] });
     const ids = knownIds(catalog);
     const errors = [];
     const warnings = [];
@@ -38,6 +46,7 @@ function compile({ title, steps, source }, config) {
     const out = [];
     let budgetMs = 0;
     let app = config.defaultApp;
+    const state = {};               // shared by phrasings for one steps file (e.g. which page a form step is on)
 
     const useVars = (op, line) => {
         for (const value of valuesOf(op)) {
@@ -70,15 +79,29 @@ function compile({ title, steps, source }, config) {
             addWait: (ms) => { budgetMs += ms; },
             generator: (name) => registry.generators[name],
             error: (msg) => errors.push(`line ${step.line}: ${msg}`),
+            state,
+            probe: !!opts.probe,
+            // a probe finds named elements in the live page (and records it); recorded pages are for generating specs
+            resolve: (kind, name) => (opts.probe ? null : resolver(state, app, kind, name)),
         };
-        const ops = found.phrasing.build(found.m, ctx);
+        let ops = found.phrasing.build(found.m, ctx);
 
+        // A switchApp op starts the step ("open the company portal"); any ops after it run in that app.
         const switchTo = ops.find((op) => op.op === 'switchApp');
         if (switchTo) {
-            if (!config.apps[switchTo.app]) errors.push(`line ${step.line}: unknown app "${switchTo.app}" (apps: ${Object.keys(config.apps).join(', ')})`);
+            if (!config.apps[switchTo.app]) {
+                errors.push(`line ${step.line}: unknown app "${switchTo.app}" (apps: ${Object.keys(config.apps).join(', ')})`);
+                continue;
+            }
             app = switchTo.app;
-            out.push({ src, app, kind: 'switchApp', ops });
-            continue;
+            out.push({ src, app, kind: 'switchApp', ops: [switchTo] });
+            ops = ops.filter((op) => op !== switchTo);
+            if (!ops.length) continue;
+        }
+        if (opts.probe) {
+            ops = ops.flatMap((op) => (ACTIONS.includes(op.op) && op.target && op.target.id
+                ? [{ op: 'call', fn: 'autoSnapshot', args: [PAGE, V(app), V(`#${op.target.id}`)] }, op]
+                : [op]));
         }
         for (const op of ops) {
             if (op.op === 'goto' && !(config.apps[op.app] && config.apps[op.app].urlEnv)) {
@@ -98,11 +121,14 @@ function compile({ title, steps, source }, config) {
         out.push({ src, app, kind: ops.every((op) => op.op === 'setVar') ? 'declare' : 'action', ops });
     }
 
+    // a probe also records the page the test ends on
+    if (opts.probe) out.push({ src: { line: 0, text: '(probe) record the last page' }, app, kind: 'action', ops: [{ op: 'call', fn: 'autoSnapshot', args: [PAGE, V(app)] }] });
+
     const apps = new Set(out.filter((s) => s.kind === 'switchApp').map((s) => s.app));
     const multi = apps.size > 1;
     if (multi) {
         const first = out.findIndex((s) => s.kind === 'switchApp');
-        out.slice(0, first).forEach((s) => errors.push(
+        out.slice(0, first).filter((s) => s.kind !== 'declare').forEach((s) => errors.push(
             `line ${s.src.line}: add a "portal ${Object.keys(config.apps).join('|')}" step before "${s.src.text}"`));
     }
 

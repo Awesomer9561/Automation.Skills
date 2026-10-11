@@ -3,22 +3,26 @@
 // A phrasing is { usage, pattern, build(match, ctx) -> op[] }. build returns plain data (IR ops), never code;
 // emit-playwright.js is the only place that knows Playwright. Packs (a project family's pack under
 // Automation.Skills/projects/, or a repo's steps.pack.js) add phrasings in the same shape.
-// ctx: { app, addWait(ms), generator(name), error(msg) }.
+// ctx: { app, addWait(ms), generator(name), error(msg), state (an object kept for the whole steps file),
+//        probe (compiling for `npm run probe`), resolve(kind, name) (see resolve.js) }.
 //
 // Ops:
 //   { op: 'click'|'check', target }                 { op: 'fill'|'type', target, value }
+//   { op: 'select', target, value }                 picks the option with that label
 //   { op: 'press', target, key }                    { op: 'upload', target, file }
 //   { op: 'waitFor', target, state: 'visible'|'hidden', timeout }
 //   { op: 'waitLoad', state: 'load'|'networkidle', timeout }    { op: 'waitUrl', regex, timeout }
 //   { op: 'sleep', ms }                             { op: 'reload' }
 //   { op: 'expectVisible'|'expectHidden', target, timeout? }    { op: 'expectUrl', regex }
-//   { op: 'goto', app, path }                       { op: 'switchApp', app }
+//   { op: 'expectText', target, value, timeout? }   target contains the text
+//   { op: 'goto', app, path }                       { op: 'switchApp', app } (may be followed by more ops)
 //   { op: 'call', fn, args, construct?, method? }   fn is a helper name mapped in steps.config.js `helpers`;
 //                                                   with construct: `new fn(...construct).method(...args)`
 //   { op: 'setVar', name, gen }                     gen: { fn } (helper returning the value) | { unique, digits } | { env }
 //   { op: 'record', type, key }                     adds the entity to the local test-data ledger
-// Targets: { id } | { idPrefix } (first element whose id starts with it) | { text: value } | { regex }
-// Values: { v: 'text with {var}s' }. Call args: PAGE, a value, or { obj: { key: value } }. Regex: { source, flags }.
+// Targets: { id } | { idPrefix } (first element whose id starts with it) | { idValue: value, ignoreCase? } (id built
+//          from {var}s, e.g. orders-list-{orderNumber}) | { text: value } | { regex }
+// Values: { v: 'text with {var}s' } | { env: 'VAR_NAME' } (read at run time; fails if unset). Call args: PAGE, a value, or { obj: { key: value } }. Regex: { source, flags }.
 
 const V = (text) => ({ v: text });
 const PAGE = '$page';
@@ -31,8 +35,31 @@ const Q = '"([^"]*)"';
 const ID = '(#[\\w-]+)';
 const UNIT = '(seconds?|secs?|minutes?|mins?)';
 const UP_TO = `(?:\\s+up to (\\d+(?:\\.\\d+)?) ${UNIT})?`;
-const WAIT = '^wait (?:till|until|for)';
+const WAIT = '^(?:i )?wait (?:till|until|for)';      // "I" optional: "I wait till ..." reads like the other steps
+const SHOWN = '(?: (?:loads|appears|shows|is visible|to load|to appear|to show|to be visible))?';
+const GONE = '(?:disappears|goes away|closes|is gone|is hidden|to disappear|to go away|to close|to be hidden)';
 const DEFAULT_WAIT_MS = 20000;
+const VALUE = '(\\{\\w+\\}|"[^"]*")';        // {var} or "literal"
+const NAME = '([^#"{].*?)';                     // a label or button text as shown on screen (not an #id)
+
+// A step that names an element by its label/text: the catalog's id when a probe recorded it; during a probe, a
+// runtime lookup by label (which records the page for next time); otherwise an error asking for a probe.
+const targetOf = (found, name) => {
+    if (found.cardPrefix) return { idValue: V(`${found.cardPrefix}${name.replace(/\s+/g, '-')}`), ignoreCase: true };
+    return found.idPrefix ? { idPrefix: found.idPrefix } : { id: found.id };
+};
+const KIND_WORDS = { field: 'field', clickable: 'button or link', checkbox: 'checkbox', select: 'dropdown', file: 'file input' };
+function byName(ctx, kind, name, withId, probeCall) {
+    const found = ctx.resolve(kind, name);
+    if (found && found.error) {
+        ctx.error(found.error);
+        return [];
+    }
+    if (found) return withId(found);
+    if (ctx.probe) return [{ op: 'call', fn: probeCall[0], args: [PAGE, V(ctx.app), ...probeCall.slice(1)] }];
+    ctx.error(`no ${KIND_WORDS[kind]} "${name}" recorded for the ${ctx.app} portal; probe this steps file first (npm run probe -- <file>)`);
+    return [];
+}
 
 const toMs = (n, unit) => Math.round(parseFloat(n) * (/^m/i.test(unit) ? 60000 : 1000));
 // Timeout from the optional "up to N unit" capture pair; an explicit one is added to the test's time budget.
@@ -42,6 +69,18 @@ const waitMs = (ctx, n, unit) => {
     return ms;
 };
 
+// Fills a field; a segmented input (OTP boxes) gets one character per box.
+function enterValue(ctx, name, value) {
+    return byName(ctx, 'field', name, (found) => {
+        if (!found.ids) return [{ op: 'fill', target: targetOf(found), value }];
+        if (/\{\w+\}/.test(value.v || '')) {
+            ctx.error(`"${name}" is split into ${found.ids.length} boxes; give the value literally, e.g. "2024"`);
+            return [];
+        }
+        return found.ids.map((id, i) => ({ op: 'type', target: { id }, value: V((value.v || '')[i] || '') }));
+    }, ['probeFill', V(name), value]);
+}
+
 const PHRASINGS = [
     {
         usage: 'portal <app>   (switch app; using more than one app gives each its own browser context)',
@@ -49,8 +88,8 @@ const PHRASINGS = [
         build: (m) => [{ op: 'switchApp', app: m[1].toLowerCase() }],
     },
     {
-        usage: 'wait 30 seconds | wait for 2 minutes  (fixed sleep; prefer a "wait till ..." step)',
-        pattern: new RegExp(`^wait (?:for )?(\\d+(?:\\.\\d+)?) ${UNIT}$`, 'i'),
+        usage: 'I wait for 5 seconds | wait 2 minutes  (fixed sleep; prefer a "wait till ..." step)',
+        pattern: new RegExp(`^(?:i )?wait (?:for )?(\\d+(?:\\.\\d+)?) ${UNIT}$`, 'i'),
         build: (m, ctx) => {
             const ms = toMs(m[1], m[2]);
             ctx.addWait(ms);
@@ -58,18 +97,18 @@ const PHRASINGS = [
         },
     },
     {
-        usage: 'wait till "text" loads [up to 30 seconds]   (also: until|for, appears|shows|is visible)',
-        pattern: new RegExp(`${WAIT} ${Q}(?: (?:loads|appears|shows|is visible))?${UP_TO}$`, 'i'),
+        usage: 'I wait till "text" appears [up to 30 seconds]   (also: until|for, loads|shows|is visible, wait for "text" to appear)',
+        pattern: new RegExp(`${WAIT} ${Q}${SHOWN}${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitFor', target: { text: V(m[1]) }, state: 'visible', timeout: waitMs(ctx, m[2], m[3]) }],
     },
     {
-        usage: 'wait till #element-id loads [up to 1 minute]   (also: appears|shows|is visible)',
-        pattern: new RegExp(`${WAIT} ${ID}(?: (?:loads|appears|shows|is visible))?${UP_TO}$`, 'i'),
+        usage: 'I wait till #element-id loads [up to 1 minute]   (also: appears|shows|is visible, to load|to appear)',
+        pattern: new RegExp(`${WAIT} ${ID}${SHOWN}${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitFor', target: byId(m[1]), state: 'visible', timeout: waitMs(ctx, m[2], m[3]) }],
     },
     {
-        usage: 'wait till #element-id|"text" disappears [up to 30 seconds]   (also: goes away|closes|is gone|is hidden)',
-        pattern: new RegExp(`${WAIT} (?:${ID}|${Q}) (?:disappears|goes away|closes|is gone|is hidden)${UP_TO}$`, 'i'),
+        usage: 'I wait till #element-id|"text" disappears [up to 30 seconds]   (also: goes away|closes|is gone|is hidden, to disappear)',
+        pattern: new RegExp(`${WAIT} (?:${ID}|${Q}) ${GONE}${UP_TO}$`, 'i'),
         build: (m, ctx) => [{
             op: 'waitFor',
             target: m[1] ? byId(m[1]) : { text: V(m[2]) },
@@ -78,24 +117,33 @@ const PHRASINGS = [
         }],
     },
     {
-        usage: 'wait till page loads [up to 30 seconds]   (also: is loaded)',
-        pattern: new RegExp(`${WAIT} (?:the )?page (?:loads|is loaded)${UP_TO}$`, 'i'),
+        usage: 'I wait till page loads [up to 30 seconds]   (also: is loaded, wait for the page to load)',
+        pattern: new RegExp(`${WAIT} (?:the )?page (?:loads|is loaded|to load)${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitLoad', state: 'load', timeout: waitMs(ctx, m[1], m[2]) }],
     },
     {
-        usage: 'wait till network is idle [up to 30 seconds]',
-        pattern: new RegExp(`${WAIT} (?:the )?network (?:is )?idle${UP_TO}$`, 'i'),
+        usage: 'I wait till network is idle [up to 30 seconds]   (also: wait for the network to be idle)',
+        pattern: new RegExp(`${WAIT} (?:the )?network (?:is |to be )?idle${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitLoad', state: 'networkidle', timeout: waitMs(ctx, m[1], m[2]) }],
     },
     {
-        usage: 'wait till url /regex/ [up to 30 seconds]',
+        usage: 'I wait till url /regex/ [up to 30 seconds]',
         pattern: new RegExp(`${WAIT} url \\/(.+)\\/${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitUrl', regex: re(m[1]), timeout: waitMs(ctx, m[2], m[3]) }],
     },
     {
-        usage: 'wait till /regex/ appears [up to 30 seconds]   (text matched by regex, e.g. toasts whose wording varies by env)',
-        pattern: new RegExp(`${WAIT} \\/(.+)\\/(?: (?:loads|appears|shows|is visible))?${UP_TO}$`, 'i'),
+        usage: 'I wait till /regex/ appears [up to 30 seconds]   (text matched by regex, e.g. toasts whose wording varies by env)',
+        pattern: new RegExp(`${WAIT} \\/(.+)\\/${SHOWN}${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitFor', target: { regex: re(m[1]) }, state: 'visible', timeout: waitMs(ctx, m[2], m[3]) }],
+    },
+    {
+        usage: 'open the portal | I open the company portal | open portal link   (an app\'s root URL; switches app if named)',
+        pattern: /^(?:i )?open (?:the )?(?:(\w+) )?portal(?: link| url| home(?: ?page)?)?$/i,
+        build: (m, ctx) => {
+            const app = m[1] ? m[1].toLowerCase() : ctx.app;
+            ctx.state.page = null;
+            return [...(m[1] ? [{ op: 'switchApp', app }] : []), { op: 'goto', app, path: '/' }];
+        },
     },
     {
         usage: 'open /path   (relative to the current app\'s base URL)',
@@ -105,7 +153,49 @@ const PHRASINGS = [
     {
         usage: 'snapshot "page-name"   (records the page into knowledge/pages/ when run via npm run probe; no-op otherwise)',
         pattern: /^snapshot "([\w-]+)"$/i,
-        build: (m) => [{ op: 'call', fn: 'snapshotPage', args: [PAGE, V(m[1])] }],
+        build: (m, ctx) => [{ op: 'call', fn: 'snapshotPage', args: [PAGE, V(m[1]), V(ctx.app)] }],
+    },
+    // ---- steps by label / button text (resolved to ids from probed pages; see resolve.js) ----
+    {
+        usage: 'I enter "Abdul" in First name | I enter {email} into Email Address   (a field by its label)',
+        pattern: new RegExp(`^(?:i )?(?:enter|type|fill in|input) ${VALUE} (?:in|into) (?:the )?${NAME}(?: field| box| input)?$`, 'i'),
+        build: (m, ctx) => enterValue(ctx, m[2], varOrText(m[1])),
+    },
+    {
+        usage: 'I enter OTP "2024" | I fill Last name with "Khan"   (a field by its label, value last)',
+        pattern: new RegExp(`^(?:i )?(?:enter|type|fill(?: in)?) (?:the )?${NAME} (?:with |as )?${VALUE}$`, 'i'),
+        build: (m, ctx) => enterValue(ctx, m[1], varOrText(m[2])),
+    },
+    {
+        usage: 'I click "Get OTP" | click Sign up | I click {orderNumber}   (a button, link or card by its text; a {var} or unknown name clicks the card with that number)',
+        pattern: new RegExp(`^(?:i )?(?:click|press|tap)(?: on)? (?:the )?(?:"([^"]+)"|(\\{\\w+\\})|${NAME})(?: button| link| tab| card)?$`, 'i'),
+        build: (m, ctx) => {
+            const name = m[1] || m[2] || m[3];
+            return byName(ctx, 'clickable', name, (found) => [{ op: 'click', target: targetOf(found, name) }], ['probeClick', V(name)]);
+        },
+    },
+    {
+        usage: 'I check Terms and conditions | tick "Remember me"   (a checkbox by its label)',
+        pattern: new RegExp(`^(?:i )?(?:check|tick) (?:the )?(?:"([^"]+)"|${NAME})(?: checkbox| box)?$`, 'i'),
+        build: (m, ctx) => {
+            const name = m[1] || m[2];
+            return byName(ctx, 'checkbox', name, (found) => [{ op: 'check', target: targetOf(found) }], ['probeCheck', V(name)]);
+        },
+    },
+    {
+        usage: 'I select "Riyadh" in City | choose "Monthly" from Plan   (a dropdown option by its label)',
+        pattern: new RegExp(`^(?:i )?(?:select|choose) ${VALUE} (?:in|from) (?:the )?${NAME}(?: dropdown| list)?$`, 'i'),
+        build: (m, ctx) => byName(ctx, 'select', m[2], (found) => [{ op: 'select', target: targetOf(found), value: varOrText(m[1]) }],
+            ['probeSelect', V(m[2]), varOrText(m[1])]),
+    },
+    {
+        usage: 'I upload "documents/file.pdf" [in Commercial document]   (the page\'s file input, or the one with that label)',
+        pattern: new RegExp(`^(?:i )?upload "([^"]+)"(?: (?:in|into|as|for) (?:the )?${NAME})?$`, 'i'),
+        build: (m, ctx) => {
+            const file = V(m[1].startsWith('.') ? m[1] : `./${m[1]}`);
+            return byName(ctx, 'file', m[2] || '', (found) => [{ op: 'upload', target: targetOf(found), file }],
+                ['probeUpload', file, V(m[2] || '')]);
+        },
     },
     {
         usage: 'enter otp "2024" in #register-otp   (types one digit into #register-otp-0, -1, ...)',
@@ -171,6 +261,11 @@ const PHRASINGS = [
         build: (m) => [{ op: 'expectVisible', target: { text: V(m[1]) } }],
     },
     {
+        usage: 'I should see "text" [up to 30 seconds]',
+        pattern: new RegExp(`^(?:i )?should see (?:the text )?${Q}${UP_TO}$`, 'i'),
+        build: (m, ctx) => [{ op: 'expectVisible', target: { text: V(m[1]) }, timeout: waitMs(ctx, m[2], m[3]) }],
+    },
+    {
         usage: 'expect visible #element-id',
         pattern: new RegExp(`^expect visible ${ID}$`, 'i'),
         build: (m) => [{ op: 'expectVisible', target: byId(m[1]) }],
@@ -192,7 +287,13 @@ const PHRASINGS = [
 const PKG = require('./package.json').name;
 const CORE_HELPERS = {
     snapshotPage: `${PKG}/runtime/snapshot`,
+    autoSnapshot: `${PKG}/runtime/snapshot`,
     recordCreated: `${PKG}/runtime/ledger`,
+    probeFill: `${PKG}/runtime/labels`,
+    probeClick: `${PKG}/runtime/labels`,
+    probeCheck: `${PKG}/runtime/labels`,
+    probeSelect: `${PKG}/runtime/labels`,
+    probeUpload: `${PKG}/runtime/labels`,
 };
 
 module.exports = {

@@ -8,7 +8,8 @@ skills/steps-to-spec/SKILL.md     generic workflow: probe pages -> write steps -
 steps-core/                       the generator (npm package, installed by each repo as file:../Automation.Skills/steps-core)
 projects/
   _projects/<project>/rules.md    rules shared by a project family (repos whose .crossrepo.json says "project": "<project>")
-  _projects/<project>/pack.js     optional: steps shared by the family (listed in each repo's steps.config.js packs)
+  _projects/<project>/*.js        optional packs: steps shared by the family (probuy: pack.js for all portals,
+                                  supplier.js for the supplier portal), listed in each repo's steps.config.js packs
   <repo-folder>/rules.md          rare per-repo overrides; win over the family file
 ```
 

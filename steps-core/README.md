@@ -8,8 +8,21 @@ shares this one copy.
 steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright.js ─► spec
                             │  registry.js: core phrasings (intents.js) + packs, later layers override,
                             │               two matches in one layer = ambiguity error
-                            └─ catalog.js: knowledge/pages/*.json (written by runtime/snapshot.js via `probe`)
+                            ├─ resolve.js: "First name" / "Get OTP" -> recorded id, tracking the current page
+                            └─ catalog.js: knowledge/pages/<app>/<slug>.json + knowledge/flows/<name>.json (written by runtime/snapshot.js via `probe`)
 ```
+
+- **Steps by label/text** (`I enter "Abdul" in First name`, `I click "Get OTP"`): `gen` resolves them through the
+  catalog; `probe` (compile with `{ probe: true }`) instead looks them up in the live page (`runtime/labels.js`) and
+  records every page reached (`autoSnapshot`). Pages are shared by all steps files: one record per app + path
+  (`pages.js`), created on first sight and updated in place afterwards; wizard steps and dialogs at that path are its
+  `states`, and each element lists the states it is in (`in`) and visible in (`vis`). What belongs to one steps file
+  is `flows/<name>.json` (pages visited in order, and the names its steps resolved), which is what lets `gen` resolve
+  a name used on several pages. A file never probed can still use pages other files recorded (`npx steps-migrate`
+  converts old `<name>-NN.json` recordings). The probe finds buttons, links, options/tabs, then any element with the text, then
+  cards by id; it records which id each name hit (the flow's `names`), clickable cards (`clickable`), and card families
+  (`cards`: sibling ids differing only in the last part, e.g. `orders-list-<order>`), so `I click {orderNumber}`
+  becomes `[id="orders-list-<value>" i]`.
 
 - **IR** (op list at the top of `intents.js`) is plain data: ids, values with `{var}`s, helper names. No code. The
   emitter is the only Playwright-aware module; another emitter (e.g. playwright-bdd) can consume the same IR.
@@ -21,8 +34,8 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
 - **Config** (`steps.config.js`): `testsDir`, `knowledgeDir`, `ledger`, `apps` (`{ name: { urlEnv: 'ENV_VAR_WITH_ROOT_URL' } }`),
   `defaultApp`, `packs`, `helpers`, optional `timeouts`. Runs use whatever the app URL variables hold.
 - **Runtime** (imported by generated specs as `steps-core/runtime/...`): `snapshot.js` (probe snapshots, no-op unless
-  `PROBE=1`) and `ledger.js` (`recordCreated(type, key)` appends to the repo's local ledger). Both load the repo's own
-  `@playwright/test`.
+  `PROBE=1`), `labels.js` (probe-only lookups by label/text) and `ledger.js` (`recordCreated(type, key)` appends to
+  the repo's local ledger). The ledger loads the repo's own `@playwright/test`.
 - **CLIs**: `steps-gen` (`--report`, `--list-steps`, `--check`), `steps-probe`, `steps-ids`.
 
 ## Using it in a repo
