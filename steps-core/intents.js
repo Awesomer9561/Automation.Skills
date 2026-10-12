@@ -24,6 +24,8 @@
 //          from {var}s, e.g. orders-list-{orderNumber}) | { text: value } | { regex }
 // Values: { v: 'text with {var}s' } | { env: 'VAR_NAME' } (read at run time; fails if unset). Call args: PAGE, a value, or { obj: { key: value } }. Regex: { source, flags }.
 
+const { regionOf, wordsPattern } = require('./regions');
+
 const V = (text) => ({ v: text });
 const PAGE = '$page';
 const re = (source, flags = '') => ({ source, flags });
@@ -41,6 +43,10 @@ const GONE = '(?:disappears|goes away|closes|is gone|is hidden|to disappear|to g
 const DEFAULT_WAIT_MS = 20000;
 const VALUE = '(\\{\\w+\\}|"[^"]*")';        // {var} or "literal"
 const NAME = '([^#"{].*?)';                     // a label or button text as shown on screen (not an #id)
+const VALUE_OR_NUMBER = '(\\{\\w+\\}|"[^"]*"|\\d+)';  // as VALUE, or a bare number ("I enter 2 in OTP field 1")
+// "... in the sidebar" narrows a name to one part of the layout (see regions.js); words are the region aliases
+const REGION = `(?: (?:in|from|on|within) the ${wordsPattern()})?`;
+const regionKey = (word) => (word ? regionOf(word) : undefined);
 
 // A step that names an element by its label/text: the catalog's id when a probe recorded it; during a probe, a
 // runtime lookup by label (which records the page for next time); otherwise an error asking for a probe.
@@ -49,15 +55,16 @@ const targetOf = (found, name) => {
     return found.idPrefix ? { idPrefix: found.idPrefix } : { id: found.id };
 };
 const KIND_WORDS = { field: 'field', clickable: 'button or link', checkbox: 'checkbox', select: 'dropdown', file: 'file input' };
-function byName(ctx, kind, name, withId, probeCall) {
-    const found = ctx.resolve(kind, name);
+// region: the layout region the name must be in (or undefined); extra: further probe call args after the region.
+function byName(ctx, kind, name, withId, probeCall, region, extra = []) {
+    const found = ctx.resolve(kind, name, region);
     if (found && found.error) {
         ctx.error(found.error);
         return [];
     }
     if (found) return withId(found);
-    if (ctx.probe) return [{ op: 'call', fn: probeCall[0], args: [PAGE, V(ctx.app), ...probeCall.slice(1)] }];
-    ctx.error(`no ${KIND_WORDS[kind]} "${name}" recorded for the ${ctx.app} portal; probe this steps file first (npm run probe -- <file>)`);
+    if (ctx.probe) return [{ op: 'call', fn: probeCall[0], args: [PAGE, V(ctx.app), ...probeCall.slice(1), V(region || ''), ...extra] }];
+    ctx.error(`no ${KIND_WORDS[kind]} "${name}"${region ? ` in the ${region}` : ''} recorded for the ${ctx.app} portal; probe this steps file first (npm run probe -- <file>)`);
     return [];
 }
 
@@ -69,16 +76,28 @@ const waitMs = (ctx, n, unit) => {
     return ms;
 };
 
-// Fills a field; a segmented input (OTP boxes) gets one character per box.
-function enterValue(ctx, name, value) {
+// "OTP field 2" -> box 2 of the segmented input "OTP" (the keyword keeps labels like "Address line 2" whole)
+const INDEXED = /^(.+?) (?:field|box|digit|input|cell) (\d+)$/i;
+
+// Fills a field; a segmented input (OTP boxes) gets one character per box, or one box when the step names it.
+function enterValue(ctx, label, value, region) {
+    const indexed = label.match(INDEXED);
+    const name = indexed ? indexed[1] : label;
+    const index = indexed ? Number(indexed[2]) : 0;
     return byName(ctx, 'field', name, (found) => {
+        if (index) {
+            if (!found.ids) ctx.error(`"${name}" is a single field, not boxes; write "${name}" without "${label.slice(name.length + 1)}"`);
+            else if (index > found.ids.length) ctx.error(`"${name}" has ${found.ids.length} boxes, there is no box ${index}`);
+            else return [{ op: 'type', target: { id: found.ids[index - 1] }, value }];
+            return [];
+        }
         if (!found.ids) return [{ op: 'fill', target: targetOf(found), value }];
         if (/\{\w+\}/.test(value.v || '')) {
-            ctx.error(`"${name}" is split into ${found.ids.length} boxes; give the value literally, e.g. "2024"`);
+            ctx.error(`"${name}" is split into ${found.ids.length} boxes; give the value literally, e.g. "2024", or fill one box: "${name} field 1"`);
             return [];
         }
         return found.ids.map((id, i) => ({ op: 'type', target: { id }, value: V((value.v || '')[i] || '') }));
-    }, ['probeFill', V(name), value]);
+    }, ['probeFill', V(name), value], region, [V(String(index))]);
 }
 
 const PHRASINGS = [
@@ -157,9 +176,9 @@ const PHRASINGS = [
     },
     // ---- steps by label / button text (resolved to ids from probed pages; see resolve.js) ----
     {
-        usage: 'I enter "Abdul" in First name | I enter {email} into Email Address   (a field by its label)',
-        pattern: new RegExp(`^(?:i )?(?:enter|type|fill in|input) ${VALUE} (?:in|into) (?:the )?${NAME}(?: field| box| input)?$`, 'i'),
-        build: (m, ctx) => enterValue(ctx, m[2], varOrText(m[1])),
+        usage: 'I enter "Abdul" in First name | I enter {email} into Email Address | I enter 2 in OTP field 1   (a field by its label; "field N" is box N of a split input; add "in the sidebar|header|modal|main" to narrow)',
+        pattern: new RegExp(`^(?:i )?(?:enter|type|fill in|input) ${VALUE_OR_NUMBER} (?:in|into) (?:the )?${NAME}(?: field| box| input)?${REGION}$`, 'i'),
+        build: (m, ctx) => enterValue(ctx, m[2], varOrText(m[1]), regionKey(m[3])),
     },
     {
         usage: 'I enter OTP "2024" | I fill Last name with "Khan"   (a field by its label, value last)',
@@ -167,26 +186,26 @@ const PHRASINGS = [
         build: (m, ctx) => enterValue(ctx, m[1], varOrText(m[2])),
     },
     {
-        usage: 'I click "Get OTP" | click Sign up | I click {orderNumber}   (a button, link or card by its text; a {var} or unknown name clicks the card with that number)',
-        pattern: new RegExp(`^(?:i )?(?:click|press|tap)(?: on)? (?:the )?(?:"([^"]+)"|(\\{\\w+\\})|${NAME})(?: button| link| tab| card)?$`, 'i'),
+        usage: 'I click "Get OTP" | click Sign up | I click {orderNumber} | I click "Orders" in the sidebar   (a button, link or card by its text; a {var} or unknown name clicks the card with that number)',
+        pattern: new RegExp(`^(?:i )?(?:click|press|tap)(?: on)? (?:the )?(?:"([^"]+)"|(\\{\\w+\\})|${NAME})(?: button| link| tab| card)?${REGION}$`, 'i'),
         build: (m, ctx) => {
             const name = m[1] || m[2] || m[3];
-            return byName(ctx, 'clickable', name, (found) => [{ op: 'click', target: targetOf(found, name) }], ['probeClick', V(name)]);
+            return byName(ctx, 'clickable', name, (found) => [{ op: 'click', target: targetOf(found, name) }], ['probeClick', V(name)], regionKey(m[4]));
         },
     },
     {
         usage: 'I check Terms and conditions | tick "Remember me"   (a checkbox by its label)',
-        pattern: new RegExp(`^(?:i )?(?:check|tick) (?:the )?(?:"([^"]+)"|${NAME})(?: checkbox| box)?$`, 'i'),
+        pattern: new RegExp(`^(?:i )?(?:check|tick) (?:the )?(?:"([^"]+)"|${NAME})(?: checkbox| box)?${REGION}$`, 'i'),
         build: (m, ctx) => {
             const name = m[1] || m[2];
-            return byName(ctx, 'checkbox', name, (found) => [{ op: 'check', target: targetOf(found) }], ['probeCheck', V(name)]);
+            return byName(ctx, 'checkbox', name, (found) => [{ op: 'check', target: targetOf(found) }], ['probeCheck', V(name)], regionKey(m[3]));
         },
     },
     {
         usage: 'I select "Riyadh" in City | choose "Monthly" from Plan   (a dropdown option by its label)',
-        pattern: new RegExp(`^(?:i )?(?:select|choose) ${VALUE} (?:in|from) (?:the )?${NAME}(?: dropdown| list)?$`, 'i'),
+        pattern: new RegExp(`^(?:i )?(?:select|choose) ${VALUE} (?:in|from) (?:the )?${NAME}(?: dropdown| list)?${REGION}$`, 'i'),
         build: (m, ctx) => byName(ctx, 'select', m[2], (found) => [{ op: 'select', target: targetOf(found), value: varOrText(m[1]) }],
-            ['probeSelect', V(m[2]), varOrText(m[1])]),
+            ['probeSelect', V(m[2]), varOrText(m[1])], regionKey(m[3])),
     },
     {
         usage: 'I upload "documents/file.pdf" [in Commercial document]   (the page\'s file input, or the one with that label)',
@@ -196,11 +215,6 @@ const PHRASINGS = [
             return byName(ctx, 'file', m[2] || '', (found) => [{ op: 'upload', target: targetOf(found), file }],
                 ['probeUpload', file, V(m[2] || '')]);
         },
-    },
-    {
-        usage: 'enter otp "2024" in #register-otp   (types one digit into #register-otp-0, -1, ...)',
-        pattern: new RegExp(`^enter otp ${Q} in (#[\\w-]+)$`, 'i'),
-        build: (m) => m[1].split('').map((digit, i) => ({ op: 'type', target: byId(`${m[2]}-${i}`), value: V(digit) })),
     },
     {
         usage: 'upload #file-input-id "documents/file.pdf"',

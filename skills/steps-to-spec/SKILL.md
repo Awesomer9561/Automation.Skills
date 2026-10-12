@@ -52,7 +52,8 @@ QA writes steps the way they read the screen; the generator turns them into an i
    I click "Sign up"
    I enter "Abdul" in First name
    I enter {email} in Email Address
-   I enter OTP "2024"
+   I enter OTP "2024"                  (or box by box: I enter 2 in OTP field 1)
+   I click "Orders" in the sidebar     (when the same text is in several places: sidebar, app header, modal, toast, main page)
    I select "Riyadh" in City
    I check Terms and conditions
    I upload "documents/file.pdf"

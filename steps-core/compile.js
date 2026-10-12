@@ -82,7 +82,7 @@ function compile({ title, steps, source }, config, opts = {}) {
             state,
             probe: !!opts.probe,
             // a probe finds named elements in the live page (and records it); recorded pages are for generating specs
-            resolve: (kind, name) => (opts.probe ? null : resolver(state, app, kind, name)),
+            resolve: (kind, name, region) => (opts.probe ? null : resolver(state, app, kind, name, region)),
         };
         let ops = found.phrasing.build(found.m, ctx);
 

@@ -24,10 +24,11 @@ const idWords = (id) => ` ${id.toLowerCase().replace(/[-_]+/g, ' ')} `;
 
 // Elements of one page matching the name, best tier first: exact label/text, label/text containing it, id containing
 // it (links have no recorded text, e.g. #login-sign-up-link for "Sign up"). `st`: the state to prefer (a page shows
-// different elements as a wizard moves on); other states are used only when it has no match.
-function match(page, kind, name, st) {
+// different elements as a wizard moves on); other states are used only when it has no match. `region`: only elements
+// recorded in that region of the layout (sidebar, header, main, ...; see regions.js).
+function match(page, kind, name, st, region) {
     const q = norm(name);
-    const all = page.elements.filter((e) => e.id && !e.id.includes('*') && KINDS[kind](e));
+    const all = page.elements.filter((e) => e.id && !e.id.includes('*') && KINDS[kind](e) && (!region || e.region === region));
     const tiers = [
         (e) => norm(e.label || e.text) === q,
         (e) => q && words(e.label || e.text).includes(` ${q} `),
@@ -71,7 +72,7 @@ function createResolver(catalog, { flowData }) {
     const visited = ((flowData && flowData.visits) || []).map((v) => v.page);
     const noted = (flowData && flowData.names) || [];
     // returns { id } | { ids } (segmented) | { error } | null (not in the catalog at all)
-    return function resolve(state, app, kind, name) {
+    return function resolve(state, app, kind, name, region) {
         const pages = catalog.filter((p) => !p.app || p.app === app);
         const current = state.page && pages.includes(state.page) ? state.page : null;
         const pick = (page, ids, st) => {
@@ -79,7 +80,12 @@ function createResolver(catalog, { flowData }) {
             state.state = st || null;
             const seg = kind === 'field' ? segmented(ids) : null;
             if (seg) return { ids: seg };
-            if (ids.length > 1) return { error: `"${name}" matches ${ids.length} elements on page ${page.name}: ${ids.map((i) => `#${i}`).join(', ')}` };
+            if (ids.length > 1) {
+                // the same text in different parts of the layout: tell QA how to narrow it
+                const regions = [...new Set(ids.map((id) => (page.elements.find((e) => e.id === id) || {}).region).filter(Boolean))];
+                const hint = regions.length > 1 ? `; add ${regions.map((r) => `"in the ${r}"`).join(' or ')}` : '';
+                return { error: `"${name}" matches ${ids.length} elements on page ${page.name}: ${ids.map((i) => `#${i}`).join(', ')}${hint}` };
+            }
             // an id recorded as a pattern (per-record, e.g. create-order-supplier-result-*) is matched by its prefix
             return ids[0].includes('*') ? { idPrefix: ids[0].split('*')[0] } : { id: ids[0] };
         };
@@ -87,17 +93,22 @@ function createResolver(catalog, { flowData }) {
         // previous step left off (the same name can mean different elements later, e.g. "Sign up" twice).
         const q = norm(name);
         const hit = (n) => n.kind === kind && norm(n.name) === q && pages.some((p) => p.name === n.page);
-        let at = noted.findIndex((n, i) => i >= (state.noteAt || 0) && hit(n));
-        if (at < 0) at = noted.findIndex(hit);
+        // (the probe did not record which region a name was in: a step that names one is looked up in the pages)
+        let at = region ? -1 : noted.findIndex((n, i) => i >= (state.noteAt || 0) && hit(n));
+        if (at < 0 && !region) at = noted.findIndex(hit);
         if (at >= 0) {
             state.noteAt = at + 1;
-            return pick(pages.find((p) => p.name === noted[at].page), [noted[at].id], noted[at].state);
+            const { id, state: st } = noted[at];
+            const page = pages.find((p) => p.name === noted[at].page);
+            // the probe noted the first box of a segmented input (OTP digits): all its boxes are the field
+            const group = kind === 'field' ? segmented(match(page, kind, name, st)) : null;
+            return pick(page, group && group.includes(id) ? group : [id], st);
         }
         if (current) {
-            const here = match(current, kind, name, state.state);
+            const here = match(current, kind, name, state.state, region);
             if (here.length) return pick(current, here, state.state);
         }
-        const found = pages.map((p) => ({ p, ids: match(p, kind, name) })).filter((c) => c.ids.length);
+        const found = pages.map((p) => ({ p, ids: match(p, kind, name, null, region) })).filter((c) => c.ids.length);
         // only a {var} or a name with digits (a record number) may be a card; anything else stays "not recorded"
         if (!found.length) return kind === 'clickable' && /\{\w+\}|\d/.test(name) ? card(state, pages, current, visited) : null;
         // rank: pages this steps file's probe visited, those after the current page first

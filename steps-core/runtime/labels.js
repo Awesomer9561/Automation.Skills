@@ -3,6 +3,8 @@
 // Generated specs never use these: they get the ids from the catalog.
 
 const { autoSnapshot, noteName, visibleIds } = require('./snapshot');
+const { loadConfig } = require('../config');
+const { regionsFor, cssFor } = require('../regions');
 
 const TIMEOUT = 60000;
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -10,12 +12,19 @@ const exact = (text) => new RegExp(`^\\s*${esc(text.trim())}\\s*\\*?\\s*$`, 'i')
 const loose = (text) => new RegExp(esc(text.trim()), 'i');
 const slug = (text) => text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
+// Narrows a locator to a layout region ("in the sidebar"); no region leaves it alone. See regions.js.
+const inRegion = (page, app, region) => {
+    if (!region) return (loc) => loc;
+    const css = cssFor(regionsFor(loadConfig(), app), region);
+    return (loc) => loc.and(page.locator(css));
+};
+
 // The first candidate locator that matches anything, polling until the page shows one.
-async function firstMatch(candidates, what) {
+async function firstMatch(candidates, what, scope = (loc) => loc) {
     const end = Date.now() + TIMEOUT;
     for (;;) {
         for (const make of candidates) {
-            const loc = make();
+            const loc = scope(make());
             if (await loc.count()) return loc;
         }
         if (Date.now() > end) throw new Error(`probe: no ${what} on the page`);
@@ -23,18 +32,18 @@ async function firstMatch(candidates, what) {
     }
 }
 
-const fieldLocator = (page, label) => firstMatch([
+const fieldLocator = (page, label, scope) => firstMatch([
     () => page.getByLabel(exact(label)).or(page.getByPlaceholder(exact(label))),
     () => page.getByLabel(loose(label)).or(page.getByPlaceholder(loose(label))),
     () => page.locator(`input[id*="${slug(label)}"], textarea[id*="${slug(label)}"], select[id*="${slug(label)}"]`),
-], `field "${label}"`);
+], `field "${label}"`, scope);
 
 // buttons and links first, then suggestion/menu/tab items (dropdown results, tabs); one role at a time, so a
 // sidebar link "Orders" wins over a tab or option that also says "Orders"
 const ROLES = ['button', 'link', 'option', 'menuitem', 'tab'];
 const byRoles = (page, name) => ROLES.map((role) => () => page.getByRole(role, { name }));
 
-const clickableLocator = (page, text) => firstMatch([
+const clickableLocator = (page, text, scope) => firstMatch([
     ...byRoles(page, exact(text)),
     ...byRoles(page, loose(text)),
     () => page.locator(`button[id*="${slug(text)}" i], a[id*="${slug(text)}" i]`),
@@ -44,7 +53,7 @@ const clickableLocator = (page, text) => firstMatch([
     // cards whose id carries the name, e.g. "TestOrder518" -> #orders-list-testorder518
     () => page.locator(`[id$="${slug(text)}" i]`),
     () => page.locator(`[id*="${slug(text)}" i]`),
-], `button, link, card or text "${text}"`);
+], `button, link, card or text "${text}"`, scope);
 
 // The id to record for a name: the element's own; if it has none or an auto-generated one (radix-:r1:, :r5:,
 // headlessui-..., mui-...) the first stable id inside it (a dropdown option wrapping create-order-supplier-result-<id>);
@@ -88,12 +97,16 @@ async function note(kind, name, loc) {
     noteName(kind, name, await idOf(loc).catch(() => null));
 }
 
-async function probeFill(page, app, label, value) {
-    const loc = await fieldLocator(page, label);
+// region: layout region to look in ('' = anywhere); index: box number (1-based) of a segmented input ('0' = not given)
+async function probeFill(page, app, label, value, region, index) {
+    const loc = await fieldLocator(page, label, inRegion(page, app, region));
     await autoSnapshot(page, app, loc.first());
     await note('field', label, loc.first());
     const n = await loc.count();
-    if (n > 1 && String(value).length === n) {
+    if (Number(index)) {
+        if (Number(index) > n) throw new Error(`probe: "${label}" has ${n} box(es), there is no box ${index}`);
+        await loc.nth(Number(index) - 1).pressSequentially(String(value));
+    } else if (n > 1 && String(value).length === n) {
         // segmented input (OTP boxes): one character per box
         for (let i = 0; i < n; i++) await loc.nth(i).pressSequentially(String(value)[i]);
     } else {
@@ -101,8 +114,8 @@ async function probeFill(page, app, label, value) {
     }
 }
 
-async function probeClick(page, app, text) {
-    const loc = (await clickableLocator(page, text)).first();
+async function probeClick(page, app, text, region) {
+    const loc = (await clickableLocator(page, text, inRegion(page, app, region))).first();
     await autoSnapshot(page, app, loc);
     await note('clickable', text, loc);
     await whenEnabled(loc, `"${text}"`);
@@ -110,19 +123,19 @@ async function probeClick(page, app, text) {
     await settle(page);
 }
 
-async function probeCheck(page, app, label) {
+async function probeCheck(page, app, label, region) {
     const loc = (await firstMatch([
         () => page.getByLabel(exact(label)),
         () => page.getByLabel(loose(label)),
         () => page.getByRole('checkbox', { name: loose(label) }),
-    ], `checkbox "${label}"`)).first();
+    ], `checkbox "${label}"`, inRegion(page, app, region))).first();
     await autoSnapshot(page, app, loc);
     await note('checkbox', label, loc);
     await loc.check();
 }
 
-async function probeSelect(page, app, label, option) {
-    const loc = (await fieldLocator(page, label)).first();
+async function probeSelect(page, app, label, option, region) {
+    const loc = (await fieldLocator(page, label, inRegion(page, app, region))).first();
     await autoSnapshot(page, app, loc);
     await note('select', label, loc);
     await loc.selectOption({ label: option });

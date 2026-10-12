@@ -27,6 +27,19 @@ the date given; everything else is a convention.
 - Local ports are not fixed: CompanyPortal pins `5173` and SupplierPortal uses Vite's default `5173`, so whichever
   starts second gets `5174`. Confirm a port by the Keycloak realm on its login page (`Supplier-Dev`, `Company-Dev`).
 
+## Layout regions (all three portals)
+Probes tag each element with its region; narrow a repeated name with `in the <region>`
+(`I click "Orders" in the sidebar`). Words: **sidebar** (side bar, sidenav), **header** (app header, top bar),
+**modal** (dialog, popup), **toast** (notification, snackbar), **main** (main content; everything outside the others).
+- Header = `<header>`, sidebar = `<aside>` (inside `#layout-sidebar` in Supplier and Company; Admin's has no id), modal =
+  Radix `[role=dialog]` (ids `<name>-modal`), toast = ids `toast-<type>-<random>-*`. There is no `<main>` or `<footer>`.
+- Nav link ids differ: `sidenav-*` (Supplier, Admin) vs `nav-*` (Company); header ids `header-*` (Supplier, Company) vs
+  `topbar-*` (Admin). Steps use labels, so this only matters when reading ids.
+- Selectors live in `pack.js` `regions`; a portal whose layout differs overrides them in `steps.config.js`
+  (`apps.<app>.regions`).
+- *Not yet verified against live portals:* region tags come from the portal source and a synthetic layout; re-probe a
+  page and check `npm run gen:ids` shows the expected region before relying on it.
+
 ## Writing steps
 - QA writes steps by label and button text (`I enter "Abdul" in First name`, `I click "Get OTP"`), probes the steps
   file (`npm run probe -- steps/<name>.txt`), then generates. Ids come from the recorded pages, never from QA.
@@ -35,9 +48,8 @@ the date given; everything else is a convention.
 
 ## Identity (Keycloak, one realm per portal, e.g. `Supplier-Dev`)
 - `pack.js` here gives every repo `I login with <supplier|company|admin> user` (opens that portal, signs in with
-  `<APP>_EMAIL`/`<APP>_PASSWORD`, waits for the login form to go). `supplier.js` adds supplier portal steps
-  (one-step register/sign up; sidebar navigation; order search/open/accept/cancel/status; logout); each id is tagged [dev]
-  (probed) or [qa] (from CompanyPortal.Automation, not yet probed). Repos list both in `steps.config.js` `packs`.
+  `<APP>_EMAIL`/`<APP>_PASSWORD`, waits for the login form to go). It is the only pack step: everything else is label
+  steps resolved from probed pages (`I click "Orders"`, `I click "Logout"`, `I click {orderNumber}`).
 - *Verified on dev (local build), 2026-10-10:* supplier order cards are `orders-list-<order number, lowercased>`
   (QA specs use `order-card-<number>`); the order details page did not render for the probe account, so its ids
   (`order-details-*`, `accept-order-modal-*`) are still unverified on dev.
@@ -51,8 +63,20 @@ the date given; everything else is a convention.
 
 ## Registration wizard (supplier; company is similar but not yet probed here)
 - Entity (CR) number: 10 digits starting with `70` (`set {cr} to unique "70{unique}"`).
-- OTP is a fixed stub on dev: **2024** (`enter otp "2024" in #register-otp`). *Verified 2026-10-10.*
+- OTP is a fixed stub on dev: **2024** (`I enter OTP "2024"`, or one box at a time `I enter 2 in OTP field 1`; four
+  boxes `#register-otp-0..3`). *Verified 2026-10-10.*
 - Documents step takes PDFs from the repo's `documents/` folder.
+- *Verified on dev, supplier, 2026-10-10:* wizard order is `/auth` entity number -> OTP -> `/auth/register` basic
+  details -> address -> `/auth/upload-documents`. On the documents page the file input
+  `#register-docs-new-commercial-document-new-doc-upload-input` is hidden (wait on
+  `#register-docs-new-commercial-document-new-doc-upload-btn`, then upload to the input); there is no terms checkbox;
+  `#register-docs-submit-btn` ("Agree and Proceed") stays disabled until a file is uploaded. Submitting lands on
+  `/dashboard` with "Account is in the verification process".
+- *Verified on dev, 2026-10-10:* a supplier account that has not finished registration lands on the wizard (`/auth`,
+  `#register-cr-input`), not the dashboard. Dashboard or profile tests need a registered and approved supplier
+  account; ask the user for one.
+- *Verified 2026-10-10:* the hosted dev build lags the local one (e.g. hosted dev's wizard page has no
+  `#auth-logout-btn`). Probe the build you will run against.
 
 ## Test data
 - Emails: `set {email} to unique "test{unique}@yopmail.com"` (yopmail inboxes are public; never use real addresses).

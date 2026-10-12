@@ -37,13 +37,36 @@ const spec = path.join(config.abs(config.testsDir), `_probe_${base}.spec.js`);
 const hadResults = fs.existsSync(path.join(root, 'test-results'));
 fs.mkdirSync(path.dirname(spec), { recursive: true });
 fs.writeFileSync(spec, code);
+
+// A probe explores pages from a clean start, so it must not inherit the repo's own run setup: projects (and their
+// `dependencies`, e.g. login setup specs), globalSetup/globalTeardown, a saved storageState and retries. It runs under
+// a temporary config that keeps the repo's other settings (testDir, timeouts, `use`) and drops those.
+const repoConfig = ['js', 'ts', 'mjs', 'cjs'].map((e) => `playwright.config.${e}`).find((f) => fs.existsSync(path.join(root, f)));
+const probeConfig = path.join(root, '_probe.playwright.config.js');
+if (repoConfig) {
+    fs.writeFileSync(probeConfig, `const { devices } = require('@playwright/test');
+const mod = require('./${repoConfig}');
+const repo = mod.default || mod;
+module.exports = {
+    ...repo,
+    projects: [{ name: 'probe', use: { ...devices['Desktop Chrome'] } }],
+    globalSetup: undefined,
+    globalTeardown: undefined,
+    testIgnore: [],
+    retries: 0,
+    use: { ...(repo.use || {}), storageState: { cookies: [], origins: [] } },
+};
+`);
+}
 let status = 1;
 try {
-    status = spawnSync('npx', ['playwright', 'test', path.relative(root, spec), '--reporter=line'], {
+    const configArgs = repoConfig ? ['--config', path.relative(root, probeConfig)] : [];
+    status = spawnSync('npx', ['playwright', 'test', path.relative(root, spec), ...configArgs, '--reporter=line'], {
         cwd: root, stdio: 'inherit', env: { ...process.env, PROBE: '1', PROBE_FLOW: base },
     }).status;
 } finally {
     fs.rmSync(spec, { force: true });
+    fs.rmSync(probeConfig, { force: true });
     // keep screenshot/trace when the probe failed so the failing page can be inspected (test-results/ is git-ignored)
     if (!hadResults && status === 0) fs.rmSync(path.join(root, 'test-results'), { recursive: true, force: true });
 }

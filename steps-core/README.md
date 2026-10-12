@@ -23,10 +23,18 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   cards by id; it records which id each name hit (the flow's `names`), clickable cards (`clickable`), and card families
   (`cards`: sibling ids differing only in the last part, e.g. `orders-list-<order>`), so `I click {orderNumber}`
   becomes `[id="orders-list-<value>" i]`.
+- **Regions** (`regions.js`): every probed element is tagged with the part of the layout it sits in (`region`:
+  `modal`, `toast`, `sidebar`, `header`, else `main`), by CSS selector, first match wins. Defaults are `[role=dialog]`,
+  `aside`, `header`; a pack's `regions`, the config's `regions` and `apps.<app>.regions` override them in that order
+  (`null` switches one off for a portal). A step narrows a name with `in the <region>`: `I click "Orders" in the sidebar`,
+  `I enter "x" in Search in the app header` (click, check, select, enter). The same text in two regions is otherwise an
+  ambiguity error that names the regions. Pages recorded before regions existed carry no `region`; re-probe them.
+- **Split inputs** (OTP boxes): `I enter OTP "2024"` fills one character per box; `I enter 2 in OTP field 1` fills
+  one box (`field|box|digit|input|cell N`; a {var} here must be one character). Both resolve by the boxes' labels.
 
 - **IR** (op list at the top of `intents.js`) is plain data: ids, values with `{var}`s, helper names. No code. The
   emitter is the only Playwright-aware module; another emitter (e.g. playwright-bdd) can consume the same IR.
-- **Packs** (`{ name, phrasings, generators, autoVars }`) add steps. A phrasing is
+- **Packs** (`{ name, phrasings, generators, autoVars, regions }`) add steps. A phrasing is
   `{ usage, pattern, build(match, ctx) -> op[] }`; ctx is `{ app, addWait(ms), generator(name), error(msg) }`.
   Helpers are referenced by name (`{ op: 'call', fn: 'LoginPage', construct: [PAGE], method: 'login', args: [] }`)
   and mapped to files by the repo's `helpers` config. Layers: core < project family pack
@@ -37,6 +45,9 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   `PROBE=1`), `labels.js` (probe-only lookups by label/text) and `ledger.js` (`recordCreated(type, key)` appends to
   the repo's local ledger). The ledger loads the repo's own `@playwright/test`.
 - **CLIs**: `steps-gen` (`--report`, `--list-steps`, `--check`), `steps-probe`, `steps-ids`.
+- **Probe isolation**: `steps-probe` runs under a temporary config (`_probe.playwright.config.js`, removed afterwards)
+  built from the repo's `playwright.config.*` minus its run setup: `projects`/`dependencies` (e.g. login setup specs),
+  `globalSetup`/`globalTeardown`, a saved `storageState` and retries. A probe always starts logged out.
 
 ## Using it in a repo
 

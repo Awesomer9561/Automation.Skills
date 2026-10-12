@@ -10,6 +10,13 @@ const creds = (app) => ({ email: { env: `${app.toUpperCase()}_EMAIL` }, password
 
 module.exports = {
     name: 'probuy',
+    // Layout regions (steps-core/regions.js) beyond the defaults. All three portals have a <header> and an <aside>
+    // (the sidebar); their modals are Radix dialogs (role=dialog, id <name>-modal), already a default; toasts have
+    // no role, only ids toast-<type>-<random>-*. There is no <main>: the main area is whatever is outside the others.
+    regions: {
+        sidebar: 'aside, #layout-sidebar',
+        toast: '[id^="toast-"]',
+    },
     phrasings: [
         {
             usage: 'I login with supplier user | sign in as company user | login using admin credentials   (opens that portal and signs in with <APP>_EMAIL / <APP>_PASSWORD from .env)',

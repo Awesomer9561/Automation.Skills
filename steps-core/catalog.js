@@ -43,16 +43,16 @@ function knownIds(catalog) {
     return ids;
 }
 
-// Known if seen exactly, if it matches a stored pattern (orders-order-card-*), or if it is the prefix of a
-// numbered family (register-otp for register-otp-0..3, used by the `enter otp` step).
+// Known if seen exactly, or if it matches a stored pattern (orders-order-card-*).
 const isKnown = (id, ids) => ids.has(id)
-    || [...ids.keys()].some((k) => (k.endsWith('*') && id.startsWith(k.slice(0, -1))) || k.startsWith(`${id}-`));
+    || [...ids.keys()].some((k) => k.endsWith('*') && id.startsWith(k.slice(0, -1)));
 
 function describe(page) {
     const lines = [`${page.name}  (${page.path}, captured ${page.capturedAt})`];
     for (const s of page.states) lines.push(`  ${s.id}: ${(s.headings || []).join(' | ') || '(no headings)'}`);
     for (const e of page.elements) {
         const bits = [e.id ? `#${e.id}` : `${e.tag}[name=${e.name}]`, e.tag + (e.type ? `:${e.type}` : '')];
+        if (e.region) bits.push(e.region);
         if (e.label) bits.push(`label "${e.label}"`);
         if (e.text) bits.push(`text "${e.text}"`);
         if (e.options) bits.push(`options ${e.options.length}`);
