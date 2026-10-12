@@ -13,7 +13,7 @@ The shared repo holding this skill (`SKILLS=$(cd -P ~/.claude/skills/steps-to-sp
 
 In a repo: steps live in `steps/<name>.steps.txt`; paths, apps, packs and helper mappings in `steps.config.js`; page
 knowledge in `knowledge/pages/<app>/<slug>.json`, one record per app + path shared by all steps files (the real ids,
-labels, button texts, select options and headings of probed pages; wizard steps and dialogs are `states` of a page),
+labels, button texts and headings of probed pages, never input values or dropdown options; wizard steps and dialogs are `states` of a page),
 plus `knowledge/flows/<name>.json` for the order one steps file visited them in. Never guess ids; they come from there.
 
 ## Step 0: Load the rules

@@ -51,7 +51,7 @@ const visibleIds = (page) => page.evaluate(() => [...document.querySelectorAll('
 // Records the interactive elements of the current page into its shared record, <knowledgeDir>/pages/<app>/<slug>.json
 // (created, or updated in place), and logs the visit in this steps file's flow. `name` only labels the console line.
 // Does nothing unless PROBE=1 (set by `npm run probe`), so snapshot steps are harmless in normal runs.
-// Never records input values: the data on these pages is real-looking and may be personal.
+// Never records input values or dropdown options: the data on these pages is real-looking and may be personal.
 async function snapshotPage(page, name, app) {
     if (!process.env.PROBE) return;
     if (!NAME_RE.test(name)) throw new Error(`snapshot name must match ${NAME_RE}: ${name}`);
@@ -98,7 +98,6 @@ async function snapshotPage(page, name, app) {
                 // visible text only for buttons and sidebar navigation; other links show user names and other data
                 text: tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))
                     ? el.innerText.trim().slice(0, 40) || undefined : undefined,
-                options: tag === 'select' ? [...el.options].slice(0, 30).map((o) => o.text.trim()) : undefined,
                 role,
                 clickable: clickable ? true : undefined,
                 readonly: el.readOnly || undefined,

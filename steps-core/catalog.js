@@ -55,7 +55,6 @@ function describe(page) {
         if (e.region) bits.push(e.region);
         if (e.label) bits.push(`label "${e.label}"`);
         if (e.text) bits.push(`text "${e.text}"`);
-        if (e.options) bits.push(`options ${e.options.length}`);
         if (e.role) bits.push(`role ${e.role}`);
         if (e.clickable) bits.push('clickable');
         if (e.readonly) bits.push('readonly');
