@@ -32,9 +32,11 @@ async function firstMatch(candidates, what, scope = (loc) => loc) {
     }
 }
 
+// only controls that take a value: a button can carry aria-label="Search" next to the search box
+const EDITABLE = 'input, textarea, select, [role=combobox], [contenteditable=true]';
 const fieldCandidates = (page, label) => [
-    () => page.getByLabel(exact(label)).or(page.getByPlaceholder(exact(label))),
-    () => page.getByLabel(loose(label)).or(page.getByPlaceholder(loose(label))),
+    () => page.getByLabel(exact(label)).or(page.getByPlaceholder(exact(label))).and(page.locator(EDITABLE)),
+    () => page.getByLabel(loose(label)).or(page.getByPlaceholder(loose(label))).and(page.locator(EDITABLE)),
     () => page.locator(`input[id*="${slug(label)}"], textarea[id*="${slug(label)}"], select[id*="${slug(label)}"]`),
 ];
 const fieldLocator = (page, label, scope) => firstMatch(fieldCandidates(page, label), `field "${label}"`, scope);
