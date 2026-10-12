@@ -9,6 +9,7 @@
 // Ops:
 //   { op: 'click'|'check', target }                 { op: 'fill'|'type', target, value }
 //   { op: 'select', target, value }                 picks the option with that label
+//   { op: 'pickOption', target, value }             custom dropdown: opens target, clicks the option with that text
 //   { op: 'press', target, key }                    { op: 'upload', target, file }
 //   { op: 'waitFor', target, state: 'visible'|'hidden', timeout }
 //   { op: 'waitLoad', state: 'load'|'networkidle', timeout }    { op: 'waitUrl', regex, timeout }
@@ -101,22 +102,9 @@ function enterValue(ctx, label, value, region) {
 }
 
 // A native <select> is picked by option label. A custom dropdown (role=combobox) opens on its trigger and the option
-// is clicked by the id the probe recorded for that option text.
-function selectOps(ctx, found, name, value) {
-    if (!found.combobox) return [{ op: 'select', target: targetOf(found), value }];
-    if (/\{\w+\}/.test(value.v)) {
-        ctx.error(`"${name}" is a custom dropdown: give the option literally, e.g. "Pending", not ${value.v}`);
-        return [];
-    }
-    const want = value.v.trim().toLowerCase();
-    const option = found.options.find((o) => o.text.trim().toLowerCase() === want);
-    if (!option) {
-        ctx.error(found.options.length
-            ? `no option "${value.v}" recorded for "${name}"; its options are ${found.options.map((o) => `"${o.text}"`).join(', ')}`
-            : `no options recorded for "${name}"; probe this steps file so the opened dropdown is recorded`);
-        return [];
-    }
-    return [{ op: 'click', target: { id: found.id } }, { op: 'click', target: { id: option.id } }];
+// is picked by its text when the test runs: option text is never stored in the knowledge files (it can be real data).
+function selectOps(found, value) {
+    return found.combobox ? [{ op: 'pickOption', target: targetOf(found), value }] : [{ op: 'select', target: targetOf(found), value }];
 }
 
 const PHRASINGS = [
@@ -223,7 +211,7 @@ const PHRASINGS = [
     {
         usage: 'I select "Riyadh" in City | choose "Monthly" from Plan   (a dropdown option by its label; native <select> or a custom one such as shadcn/Radix)',
         pattern: new RegExp(`^(?:i )?(?:select|choose) ${VALUE} (?:in|from) (?:the )?${NAME}(?: dropdown| list)?${REGION}$`, 'i'),
-        build: (m, ctx) => byName(ctx, 'select', m[2], (found) => selectOps(ctx, found, m[2], varOrText(m[1])),
+        build: (m, ctx) => byName(ctx, 'select', m[2], (found) => selectOps(found, varOrText(m[1])),
             ['probeSelect', V(m[2]), varOrText(m[1])], regionKey(m[3])),
     },
     {

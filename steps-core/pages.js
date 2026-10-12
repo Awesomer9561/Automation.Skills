@@ -50,8 +50,6 @@ function mergeSnapshot(existing, snap, today = new Date().toISOString().slice(0,
     for (const { visible, ...attrs } of snap.elements) {
         const prev = byKey.get(elKey(attrs));
         const next = { ...clean(attrs), in: add(prev ? prev.in : [], state.id), vis: prev ? prev.vis : [] };
-        // a custom dropdown only shows its options while open: keep what an earlier snapshot recorded
-        if (!next.options && prev && prev.role === 'combobox' && prev.options) next.options = prev.options;
         next.vis = visible ? add(next.vis, state.id) : drop(next.vis, state.id);
         if (prev) page.elements[page.elements.indexOf(prev)] = next;
         else page.elements.push(next);

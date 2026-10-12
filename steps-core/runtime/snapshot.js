@@ -72,15 +72,6 @@ async function snapshotPage(page, name, app) {
             const near = scope && scope.querySelector('label');
             return (near && near.innerText.trim()) || el.getAttribute('placeholder') || undefined;
         };
-        // A custom dropdown (Radix/shadcn Select: <button role=combobox>) only has its options in the page while open:
-        // record them as {text, id} so a step can pick one by its text.
-        const comboOptions = (el) => {
-            if (el.getAttribute('aria-expanded') !== 'true') return undefined;
-            const list = document.getElementById(el.getAttribute('aria-controls') || '') || document.querySelector('[role=listbox]');
-            const options = [...(list ? list.querySelectorAll('[role=option]') : [])]
-                .filter((o) => o.id).slice(0, 30).map((o) => ({ text: o.innerText.trim(), id: o.id }));
-            return options.length ? options : undefined;
-        };
         const seen = new Set();
         const elements = [];
         for (const el of document.querySelectorAll('[id], input, textarea, select, button, a[href]')) {
@@ -107,8 +98,7 @@ async function snapshotPage(page, name, app) {
                 // visible text only for buttons and sidebar navigation; other links show user names and other data
                 text: tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))
                     ? el.innerText.trim().slice(0, 40) || undefined : undefined,
-                options: tag === 'select' ? [...el.options].slice(0, 30).map((o) => o.text.trim())
-                    : role === 'combobox' ? comboOptions(el) : undefined,
+                options: tag === 'select' ? [...el.options].slice(0, 30).map((o) => o.text.trim()) : undefined,
                 role,
                 clickable: clickable ? true : undefined,
                 readonly: el.readOnly || undefined,
@@ -121,9 +111,7 @@ async function snapshotPage(page, name, app) {
     }, regions);
 
     data.elements = data.elements.map((e) => (e.id && AUTO_ID.test(e.id) ? { ...e, id: undefined } : e))
-        .filter((e) => e.id || e.tag !== 'div')
-        .map((e) => (e.role === 'combobox' && e.options
-            ? { ...e, options: e.options.filter((o) => !AUTO_ID.test(o.id)).map((o) => ({ ...o, id: normalize(o.id) })) } : e));
+        .filter((e) => e.id || e.tag !== 'div');
     const snap = {
         app: app || undefined,
         path: normalize(data.path),

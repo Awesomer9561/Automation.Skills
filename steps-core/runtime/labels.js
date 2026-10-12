@@ -136,7 +136,7 @@ async function probeCheck(page, app, label, region) {
 }
 
 // A custom dropdown (shadcn/Radix Select) is a button[role=combobox] whose title is a <label> next to it, not linked
-// to it; also its aria-label or title. Found by that text, then opened to pick the option.
+// to it; also its aria-label or title. Found by that text, then opened to pick the option by its text.
 const comboCandidates = (page, label) => [
     () => page.getByRole('combobox', { name: exact(label) }),
     () => page.locator('label').filter({ hasText: exact(label) }).locator('xpath=..').locator('[role=combobox]'),
@@ -156,9 +156,8 @@ async function probeSelect(page, app, label, option, region) {
     }
     await whenEnabled(loc, `"${label}"`);
     await loc.click();
-    const item = page.getByRole('option', { name: exact(option) }).first();
-    await autoSnapshot(page, app, item);        // records the open dropdown's options
-    await item.click();
+    // the options are not recorded (they can be real data); the generated spec picks them by text when it runs
+    await page.getByRole('option', { name: exact(option) }).first().click();
     await settle(page);
 }
 

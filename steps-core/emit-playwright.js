@@ -51,6 +51,7 @@ function opLines(op, page, apps) {
         case 'click': return [`await ${at(op.target)}.click();`];
         case 'check': return [`await ${at(op.target)}.check();`];
         case 'select': return [`await ${at(op.target)}.selectOption({ label: ${str(op.value)} });`];
+        case 'pickOption': return [`await ${at(op.target)}.click();`, `await ${page}.getByRole('option', { name: ${str(op.value)}, exact: true }).click();`];
         case 'fill': return [`await ${at(op.target)}.fill(${str(op.value)});`];
         case 'type': return [`await ${at(op.target)}.pressSequentially(${str(op.value)});`];
         case 'press': return [`await ${at(op.target)}.press(${quote(op.key)});`];

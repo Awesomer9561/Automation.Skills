@@ -30,9 +30,10 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   `I enter "x" in Search in the app header` (click, check, select, enter). The same text in two regions is otherwise an
   ambiguity error that names the regions. Pages recorded before regions existed carry no `region`; re-probe them.
 - **Custom dropdowns** (shadcn/Radix `button[role=combobox]`): `I select "Pending" in Client Order Filter` finds the
-  dropdown by its title (the `<label>` beside it, or its `aria-label`/`title`), opens it, and clicks the option. The probe
-  records the dropdown's label and, while it is open, its options as `{text, id}`; `gen` emits `click trigger` then
-  `click option` by id. The option text must be literal (not a `{var}`) and must have been probed. Native `<select>` is unchanged.
+  dropdown by its title (the `<label>` beside it, or its `aria-label`/`title`). `gen` emits a click on the trigger's
+  id, then picks the option by its text when the test runs (so the text may be a `{var}`). Option text is never
+  recorded in the knowledge files, since it can be real data; the probe opens the dropdown and clicks the option
+  but does not snapshot it. Native `<select>` is unchanged.
 - **Split inputs** (OTP boxes): `I enter OTP "2024"` fills one character per box; `I enter 2 in OTP field 1` fills
   one box (`field|box|digit|input|cell N`; a {var} here must be one character). Both resolve by the boxes' labels.
 

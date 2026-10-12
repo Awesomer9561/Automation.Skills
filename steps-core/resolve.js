@@ -88,7 +88,7 @@ function createResolver(catalog, { flowData }) {
             }
             if (kind === 'select') {
                 const el = page.elements.find((e) => e.id === ids[0]) || {};
-                if (el.role === 'combobox') return { id: ids[0], combobox: true, options: el.options || [] };
+                if (el.role === 'combobox') return { id: ids[0], combobox: true };
             }
             // an id recorded as a pattern (per-record, e.g. create-order-supplier-result-*) is matched by its prefix
             return ids[0].includes('*') ? { idPrefix: ids[0].split('*')[0] } : { id: ids[0] };
