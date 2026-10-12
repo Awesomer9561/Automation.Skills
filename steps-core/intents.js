@@ -30,6 +30,9 @@ const { regionOf, wordsPattern } = require('./regions');
 const V = (text) => ({ v: text });
 const PAGE = '$page';
 const re = (source, flags = '') => ({ source, flags });
+// A bare path ("/dashboard", no closing slash) as a URL regex: any host, that exact path, then end / "/" / "?" / "#"
+// (so "/orders" matches /orders and /orders/123 but not /orders-archive).
+const pathRe = (p) => re(`^[a-z][a-z0-9+.-]*:\\/\\/[^\\/]+${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\//g, '\\/')}(?:[\\/?#]|$)`);
 const byId = (hashId) => ({ id: hashId.replace(/^#/, '') });
 // {var} or "quoted literal" -> value
 const varOrText = (s) => V(s.startsWith('"') ? s.slice(1, -1) : s);
@@ -156,6 +159,11 @@ const PHRASINGS = [
         usage: 'I wait till url /regex/ [up to 30 seconds]',
         pattern: new RegExp(`${WAIT} url \\/(.+)\\/${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'waitUrl', regex: re(m[1]), timeout: waitMs(ctx, m[2], m[3]) }],
+    },
+    {
+        usage: 'I wait till url /path [up to 30 seconds]   (a path without a closing slash: /dashboard, /orders/123)',
+        pattern: new RegExp(`${WAIT} url (\\/[^\\s]*[^\\s/])${UP_TO}$`, 'i'),
+        build: (m, ctx) => [{ op: 'waitUrl', regex: pathRe(m[1]), timeout: waitMs(ctx, m[2], m[3]) }],
     },
     {
         usage: 'I wait till /regex/ appears [up to 30 seconds]   (text matched by regex, e.g. toasts whose wording varies by env)',
@@ -300,6 +308,11 @@ const PHRASINGS = [
         usage: 'expect url /regex/',
         pattern: /^expect url \/(.+)\/$/i,
         build: (m) => [{ op: 'expectUrl', regex: re(m[1]) }],
+    },
+    {
+        usage: 'expect url /path   (a path without a closing slash: /dashboard)',
+        pattern: /^expect url (\/[^\s]*[^\s/])$/i,
+        build: (m) => [{ op: 'expectUrl', regex: pathRe(m[1]) }],
     },
 ];
 
