@@ -100,6 +100,25 @@ function enterValue(ctx, label, value, region) {
     }, ['probeFill', V(name), value], region, [V(String(index))]);
 }
 
+// A native <select> is picked by option label. A custom dropdown (role=combobox) opens on its trigger and the option
+// is clicked by the id the probe recorded for that option text.
+function selectOps(ctx, found, name, value) {
+    if (!found.combobox) return [{ op: 'select', target: targetOf(found), value }];
+    if (/\{\w+\}/.test(value.v)) {
+        ctx.error(`"${name}" is a custom dropdown: give the option literally, e.g. "Pending", not ${value.v}`);
+        return [];
+    }
+    const want = value.v.trim().toLowerCase();
+    const option = found.options.find((o) => o.text.trim().toLowerCase() === want);
+    if (!option) {
+        ctx.error(found.options.length
+            ? `no option "${value.v}" recorded for "${name}"; its options are ${found.options.map((o) => `"${o.text}"`).join(', ')}`
+            : `no options recorded for "${name}"; probe this steps file so the opened dropdown is recorded`);
+        return [];
+    }
+    return [{ op: 'click', target: { id: found.id } }, { op: 'click', target: { id: option.id } }];
+}
+
 const PHRASINGS = [
     {
         usage: 'portal <app>   (switch app; using more than one app gives each its own browser context)',
@@ -202,9 +221,9 @@ const PHRASINGS = [
         },
     },
     {
-        usage: 'I select "Riyadh" in City | choose "Monthly" from Plan   (a dropdown option by its label)',
+        usage: 'I select "Riyadh" in City | choose "Monthly" from Plan   (a dropdown option by its label; native <select> or a custom one such as shadcn/Radix)',
         pattern: new RegExp(`^(?:i )?(?:select|choose) ${VALUE} (?:in|from) (?:the )?${NAME}(?: dropdown| list)?${REGION}$`, 'i'),
-        build: (m, ctx) => byName(ctx, 'select', m[2], (found) => [{ op: 'select', target: targetOf(found), value: varOrText(m[1]) }],
+        build: (m, ctx) => byName(ctx, 'select', m[2], (found) => selectOps(ctx, found, m[2], varOrText(m[1])),
             ['probeSelect', V(m[2]), varOrText(m[1])], regionKey(m[3])),
     },
     {

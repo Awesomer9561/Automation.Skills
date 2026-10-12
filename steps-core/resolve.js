@@ -13,7 +13,7 @@ const KINDS = {
     field: (e) => (e.tag === 'input' && !['button', 'submit', 'checkbox', 'radio', 'file', 'hidden'].includes(e.type)) || e.tag === 'textarea',
     clickable: (e) => e.tag === 'button' || e.tag === 'a' || (e.tag === 'input' && ['button', 'submit'].includes(e.type)) || e.clickable,
     checkbox: (e) => e.tag === 'input' && ['checkbox', 'radio'].includes(e.type),
-    select: (e) => e.tag === 'select',
+    select: (e) => e.tag === 'select' || e.role === 'combobox',
     file: (e) => e.tag === 'input' && e.type === 'file',
 };
 
@@ -85,6 +85,10 @@ function createResolver(catalog, { flowData }) {
                 const regions = [...new Set(ids.map((id) => (page.elements.find((e) => e.id === id) || {}).region).filter(Boolean))];
                 const hint = regions.length > 1 ? `; add ${regions.map((r) => `"in the ${r}"`).join(' or ')}` : '';
                 return { error: `"${name}" matches ${ids.length} elements on page ${page.name}: ${ids.map((i) => `#${i}`).join(', ')}${hint}` };
+            }
+            if (kind === 'select') {
+                const el = page.elements.find((e) => e.id === ids[0]) || {};
+                if (el.role === 'combobox') return { id: ids[0], combobox: true, options: el.options || [] };
             }
             // an id recorded as a pattern (per-record, e.g. create-order-supplier-result-*) is matched by its prefix
             return ids[0].includes('*') ? { idPrefix: ids[0].split('*')[0] } : { id: ids[0] };

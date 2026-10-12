@@ -32,11 +32,12 @@ async function firstMatch(candidates, what, scope = (loc) => loc) {
     }
 }
 
-const fieldLocator = (page, label, scope) => firstMatch([
+const fieldCandidates = (page, label) => [
     () => page.getByLabel(exact(label)).or(page.getByPlaceholder(exact(label))),
     () => page.getByLabel(loose(label)).or(page.getByPlaceholder(loose(label))),
     () => page.locator(`input[id*="${slug(label)}"], textarea[id*="${slug(label)}"], select[id*="${slug(label)}"]`),
-], `field "${label}"`, scope);
+];
+const fieldLocator = (page, label, scope) => firstMatch(fieldCandidates(page, label), `field "${label}"`, scope);
 
 // buttons and links first, then suggestion/menu/tab items (dropdown results, tabs); one role at a time, so a
 // sidebar link "Orders" wins over a tab or option that also says "Orders"
@@ -134,11 +135,31 @@ async function probeCheck(page, app, label, region) {
     await loc.check();
 }
 
+// A custom dropdown (shadcn/Radix Select) is a button[role=combobox] whose title is a <label> next to it, not linked
+// to it; also its aria-label or title. Found by that text, then opened to pick the option.
+const comboCandidates = (page, label) => [
+    () => page.getByRole('combobox', { name: exact(label) }),
+    () => page.locator('label').filter({ hasText: exact(label) }).locator('xpath=..').locator('[role=combobox]'),
+    () => page.getByRole('combobox', { name: loose(label) }),
+    () => page.locator('label').filter({ hasText: loose(label) }).locator('xpath=..').locator('[role=combobox]'),
+    () => page.locator(`[role=combobox][title*="${label.trim()}" i]`),
+];
+
 async function probeSelect(page, app, label, option, region) {
-    const loc = (await fieldLocator(page, label, inRegion(page, app, region))).first();
+    const loc = (await firstMatch([...comboCandidates(page, label), ...fieldCandidates(page, label)],
+        `dropdown "${label}"`, inRegion(page, app, region))).first();
     await autoSnapshot(page, app, loc);
     await note('select', label, loc);
-    await loc.selectOption({ label: option });
+    if (await loc.evaluate((el) => el.tagName === 'SELECT')) {
+        await loc.selectOption({ label: option });
+        return;
+    }
+    await whenEnabled(loc, `"${label}"`);
+    await loc.click();
+    const item = page.getByRole('option', { name: exact(option) }).first();
+    await autoSnapshot(page, app, item);        // records the open dropdown's options
+    await item.click();
+    await settle(page);
 }
 
 async function probeUpload(page, app, file, label) {

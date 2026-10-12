@@ -36,3 +36,11 @@ test('attributes refresh and visibility is tracked per state', () => {
     assert.deepEqual(x.vis, []);
     assert.ok(b.changed);
 });
+
+test('a closed custom dropdown keeps the options an earlier open snapshot recorded', () => {
+    const combo = (extra = {}) => el('f-select', { tag: 'button', type: undefined, role: 'combobox', label: 'Filter', ...extra });
+    const options = [{ text: 'Pending', id: 'f-pending-item' }];
+    const a = mergeSnapshot(null, snap([combo({ options }), ...ids(9)]));
+    const b = mergeSnapshot(a.page, snap([combo(), ...ids(9)]));
+    assert.deepEqual(b.page.elements.find((e) => e.id === 'f-select').options, options);
+});
