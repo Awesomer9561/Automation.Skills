@@ -47,9 +47,13 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
   and generates end to end this way (8 pages; both "Sign up"s and both "Email Address" fields resolve correctly).
 
 ## Identity (Keycloak, one realm per portal, e.g. `Supplier-Dev`)
-- `pack.js` here gives every repo `I login with <supplier|company|admin> user` (opens that portal, signs in with
-  `<APP>_EMAIL`/`<APP>_PASSWORD`, waits for the login form to go). It is the only pack step: everything else is label
+- `pack.js` here gives every repo one login step: `I login as "ADMIN" user` (also `with ... credentials|account`;
+  `SUPPLIER`, `COMPANY`, or a named account like `"SUPPLIER_CUSTOM_PLAN"`). The quoted name is the `.env` prefix:
+  credentials are `<NAME>_EMAIL` / `<NAME>_PASSWORD`, and its first word is the portal (an `apps` key in the repo's
+  `steps.config.js`). It opens that portal, signs in and waits for the login form to go. There is no account list to
+  maintain, and no unnamed `I login with <app> user` any more. It is the only pack step: everything else is label
   steps resolved from probed pages (`I click "Orders"`, `I click "Logout"`, `I click {orderNumber}`).
+  *Compiled and generated only; not yet run against a live login.*
 - *Verified on dev (local build), 2026-10-10:* supplier order cards are `orders-list-<order number, lowercased>`
   (QA specs use `order-card-<number>`); the order details page did not render for the probe account, so its ids
   (`order-details-*`, `accept-order-modal-*`) are still unverified on dev.

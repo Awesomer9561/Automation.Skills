@@ -5,8 +5,20 @@ const { byId } = require('../../../steps-core/intents');
 
 const LOGIN_MS = 60000;
 
-// Credentials per portal follow the .env convention in rules.md: <APP>_EMAIL / <APP>_PASSWORD.
-const creds = (app) => ({ email: { env: `${app.toUpperCase()}_EMAIL` }, password: { env: `${app.toUpperCase()}_PASSWORD` } });
+// Open the portal's root, sign in on the Keycloak form, and wait for the form to go.
+const loginOps = (app, email, password, ctx) => {
+    ctx.addWait(2 * LOGIN_MS);
+    return [
+        { op: 'switchApp', app },
+        { op: 'goto', app, path: '/' },
+        { op: 'waitFor', target: byId('#login-username-input'), state: 'visible', timeout: LOGIN_MS },
+        { op: 'fill', target: byId('#login-username-input'), value: email },
+        { op: 'fill', target: byId('#login-password-input'), value: password },
+        { op: 'click', target: byId('#login-submit-btn') },
+        // signed in once Keycloak's form is gone; the landing page differs per account
+        { op: 'waitFor', target: byId('#login-password-input'), state: 'hidden', timeout: LOGIN_MS },
+    ];
+};
 
 module.exports = {
     name: 'probuy',
@@ -19,22 +31,16 @@ module.exports = {
     },
     phrasings: [
         {
-            usage: 'I login with supplier user | sign in as company user | login using admin credentials   (opens that portal and signs in with <APP>_EMAIL / <APP>_PASSWORD from .env)',
-            pattern: /^(?:i )?(?:log ?in|sign ?in)(?: as| with| using)? (?:the |a |an )?(\w+)(?: user| account| credentials)?$/i,
+            usage: 'I login as "ADMIN" user | I login with "SUPPLIER_CUSTOM_PLAN" credentials|account   (the quoted name is the .env prefix: credentials are <NAME>_EMAIL / <NAME>_PASSWORD, and its first word is the portal)',
+            pattern: /^(?:i )?(?:log ?in|sign ?in)(?: as| with| using)? (?:the |a |an )?"([^"]+)"(?: user| account| credentials)?$/i,
             build: (m, ctx) => {
-                const app = m[1].toLowerCase();
-                const { email, password } = creds(app);
-                ctx.addWait(2 * LOGIN_MS);
-                return [
-                    { op: 'switchApp', app },
-                    { op: 'goto', app, path: '/' },
-                    { op: 'waitFor', target: byId('#login-username-input'), state: 'visible', timeout: LOGIN_MS },
-                    { op: 'fill', target: byId('#login-username-input'), value: email },
-                    { op: 'fill', target: byId('#login-password-input'), value: password },
-                    { op: 'click', target: byId('#login-submit-btn') },
-                    // signed in once Keycloak's form is gone; the landing page differs per account
-                    { op: 'waitFor', target: byId('#login-password-input'), state: 'hidden', timeout: LOGIN_MS },
-                ];
+                const prefix = m[1].trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+                const app = prefix.split('_')[0].toLowerCase();
+                if (!app) {
+                    ctx.error(`account "${m[1]}" must start with its portal, e.g. "ADMIN" or "SUPPLIER_CUSTOM_PLAN"`);
+                    return [];
+                }
+                return loginOps(app, { env: `${prefix}_EMAIL` }, { env: `${prefix}_PASSWORD` }, ctx);
             },
         },
     ],

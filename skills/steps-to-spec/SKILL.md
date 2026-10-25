@@ -60,7 +60,7 @@ QA writes steps the way they read the screen; the generator turns them into an i
    I click {orderNumber}          (a card in a list, e.g. the order created earlier in the test)
    I should see "Account is in the verification process" up to 30 seconds
    ```
-   `npm run gen:list` shows every phrasing (core, plus pack one-liners like `I login with supplier user`). Credentials:
+   `npm run gen:list` shows every phrasing (core, plus pack one-liners like `I login as "SUPPLIER" user`). Credentials:
    `set {x} to env NAME`. A test that creates data ends with `record <type> {key}`. `#id` steps still work but are
    rarely needed.
 2. **Probe the steps file itself:** `npm run probe -- steps/<name>.txt`. It runs the steps in a browser, finding each
