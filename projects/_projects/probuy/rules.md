@@ -82,6 +82,12 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
 - *Verified 2026-10-10:* the hosted dev build lags the local one (e.g. hosted dev's wizard page has no
   `#auth-logout-btn`). Probe the build you will run against.
 
+## Names in knowledge files
+- Never record a person's name (the signed-in user's, or anyone else's). Probes redact the words of the name shown by the
+  elements in the config's `identity` list and skip multi-line button text; a repo lists its header's name element there.
+- Admin: `apps.admin.identity: ['#topbar-account-name']`. *Supplier and Company: set `identity` to their header's
+  account/name element (not yet looked up) before probing, and re-check `knowledge/` for the name.*
+
 ## Test data
 - Emails: `set {email} to unique "test{unique}@yopmail.com"` (yopmail inboxes are public; never use real addresses).
 - VAT: 15 digits (`unique "3000000{unique}"`). IBAN `SA0380000000608010167519`. Address: building `102`,

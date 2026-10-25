@@ -14,6 +14,27 @@ const normalize = (s) => (s || '')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '*')
     .replace(/\d{4,}/g, '*');
 
+// People's names never go into the knowledge files. `identity` (a pack's, the config's, `apps.<app>.identity`: CSS
+// selectors of the elements that show who is signed in, e.g. '#topbar-account-name') tells the probe where to read the
+// name from; its words are then replaced by `*` everywhere a snapshot records text (headings, button text, labels).
+const identityFor = (config, app) => [
+    ...(config.packs || []).flatMap((p) => p.identity || []),
+    ...(config.identity || []),
+    ...((app && config.apps[app] && config.apps[app].identity) || []),
+];
+const knownNames = new Set();   // lower-cased words of the names seen so far in this probe run
+
+// `text` with every known name word (whole words, any letters) replaced by `*`.
+function redact(text, names = knownNames) {
+    if (!text) return text;
+    let out = text;
+    for (const word of names) {
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'), '*');
+    }
+    return out;
+}
+
 // Repeated clickable elements whose ids differ only in the last part (orders-list-testorder518, orders-list-e2e123...):
 // one entry per family, so `gen` can target a record by its number ("I click {orderNumber}"). Only the shared prefix
 // is stored, never the record parts.
@@ -58,7 +79,17 @@ async function snapshotPage(page, name, app) {
     await page.waitForLoadState('load');
 
     const regions = Object.entries(regionsFor(loadConfig(), app));
-    const data = await page.evaluate((regions) => {
+    const identity = identityFor(loadConfig(), app);
+    const data = await page.evaluate(({ regions, identity }) => {
+        const isIdentity = (el) => identity.some((sel) => el.matches(sel) || el.querySelector(sel));
+        const names = [];
+        for (const sel of identity) {
+            for (const el of document.querySelectorAll(sel)) {
+                for (const t of [el.innerText, el.getAttribute('title'), el.getAttribute('aria-label')]) {
+                    names.push(...(t || '').split(/[\s,]+/).filter((w) => w.length >= 2));
+                }
+            }
+        }
         // the first region (in precedence order) the element sits in; anywhere else is the main area
         const regionOf = (el) => {
             for (const [name, selector] of regions) if (el.closest(selector)) return name;
@@ -94,9 +125,11 @@ async function snapshotPage(page, name, app) {
                 tag,
                 type: el.getAttribute('type') || undefined,
                 name: el.getAttribute('name') || undefined,
-                label: isField ? labelOf(el) : undefined,
-                // visible text only for buttons and sidebar navigation; other links show user names and other data
-                text: tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))
+                label: isField && !isIdentity(el) ? labelOf(el) : undefined,
+                // visible text only for buttons and sidebar navigation (other links show user names and other data),
+                // and only a single line: a multi-line button is an avatar/name/role block, not a label
+                text: (tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))) && !isIdentity(el)
+                    && !/\n/.test(el.innerText.trim())
                     ? el.innerText.trim().slice(0, 40) || undefined : undefined,
                 role,
                 clickable: clickable ? true : undefined,
@@ -106,8 +139,12 @@ async function snapshotPage(page, name, app) {
             });
         }
         const headings = [...document.querySelectorAll('h1, h2, h3')].map((h) => h.innerText.trim()).filter(Boolean);
-        return { path: location.pathname, headings, elements };
-    }, regions);
+        return { path: location.pathname, headings, elements, names };
+    }, { regions, identity });
+
+    for (const word of data.names) knownNames.add(word.toLowerCase());
+    data.headings = data.headings.map((h) => redact(h));
+    data.elements = data.elements.map((e) => ({ ...e, text: redact(e.text), label: redact(e.label) }));
 
     data.elements = data.elements.map((e) => (e.id && AUTO_ID.test(e.id) ? { ...e, id: undefined } : e))
         .filter((e) => e.id || e.tag !== 'div');
@@ -161,4 +198,4 @@ function noteName(kind, name, id) {
     writeFlow();
 }
 
-module.exports = { snapshotPage, autoSnapshot, noteName, visibleIds };
+module.exports = { snapshotPage, autoSnapshot, noteName, visibleIds, redact };

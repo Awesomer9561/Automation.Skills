@@ -31,6 +31,11 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   that part of the page: `I should see "English" in the header`, `expect text "Saved" in the modal`,
   `I wait till "Saved" appears in the toast`, `I wait till "Confirm" disappears in the modal`. The same text in two regions is otherwise an
   ambiguity error that names the regions. Pages recorded before regions existed carry no `region`; re-probe them.
+- **No names in knowledge files**: a snapshot records button text only when it is one line (an avatar/name/role block
+  is skipped), and `identity` (CSS selectors of the elements that show who is signed in, from a pack, the config, or
+  `apps.<app>.identity`, e.g. `'#topbar-account-name'`) tells the probe which name to look for: those elements record no
+  text, and every word of the name is replaced by `*` in headings, button text and labels. A portal whose header shows the
+  user must list that element in `identity`.
 - **Custom dropdowns** (shadcn/Radix `button[role=combobox]`): `I select "Pending" in Client Order Filter` finds the
   dropdown by its title (the `<label>` beside it, or its `aria-label`/`title`). `gen` emits a click on the trigger's
   id, then picks the option by its text when the test runs (so the text may be a `{var}`). Option text is never

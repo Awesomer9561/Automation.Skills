@@ -70,7 +70,9 @@ QA writes steps the way they read the screen; the generator turns them into an i
    flow saves or creates something, the probe does too, so tell the user first. If it fails part-way, the pages
    reached are kept; `test-results/` has the screenshot, fix the step and re-run.
    - Check `npm run gen:ids -- <page or path>`: each page's path and headings should be the screen you expect.
-   - Snapshots never store input values or link text. Still skim new `knowledge/pages/*.json` for anything personal
+   - Snapshots never store input values, link text or people's names (`identity` selectors in the config say where the
+     signed-in user's name is shown; see the steps-core README). A new portal needs its `identity` set before the first probe.
+     Still skim new `knowledge/pages/*.json` for anything personal
      before it is committed.
 3. **Generate:** `npm run gen -- steps/<name>.txt`. Each label/text is resolved to the recorded id, on the page the
    test is on (the flow log keeps the pages in the order the probe reached them, so a name used on two pages resolves to the right
