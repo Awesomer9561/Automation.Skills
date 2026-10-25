@@ -54,6 +54,11 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
   maintain, and no unnamed `I login with <app> user` any more. It is the only pack step: everything else is label
   steps resolved from probed pages (`I click "Orders"`, `I click "Logout"`, `I click {orderNumber}`).
   *Compiled and generated only; not yet run against a live login.*
+- Also in `pack.js`: `I should see the dark|light theme` and `I switch the language to English|Arabic`. Their helpers are
+  in `helpers.js` beside the pack; a repo maps them with `helpers: { ...probuy.helpers }` in `steps.config.js`. The language
+  is saved on the user, so a run can start in either; `I switch the language ...` sets it first. *Verified on dev, admin,
+  2026-10-25 (theme and language specs pass); the toggle id `language-switcher-toggle-btn` is Admin's, not yet checked on
+  Supplier / Company.*
 - *Verified on dev (local build), 2026-10-10:* supplier order cards are `orders-list-<order number, lowercased>`
   (QA specs use `order-card-<number>`); the order details page did not render for the probe account, so its ids
   (`order-details-*`, `accept-order-modal-*`) are still unverified on dev.

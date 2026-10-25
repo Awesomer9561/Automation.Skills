@@ -1,7 +1,8 @@
 // Steps shared by every ProBuy portal (supplier, company, admin): their Keycloak login pages use the same ids.
 // Repos list this file in steps.config.js `packs`. Ids verified by probes on dev, 2026-10-10 (supplier, company).
 
-const { byId } = require('../../../steps-core/intents');
+const path = require('path');
+const { byId, V, PAGE } = require('../../../steps-core/intents');
 
 const LOGIN_MS = 60000;
 
@@ -22,6 +23,12 @@ const loginOps = (app, email, password, ctx) => {
 
 module.exports = {
     name: 'probuy',
+    // Helper modules the steps below call. Core ignores this field; a repo maps them in steps.config.js with
+    // `helpers: { ...require('../Automation.Skills/projects/_projects/probuy/pack').helpers }`.
+    helpers: {
+        expectTheme: path.join(__dirname, 'helpers.js'),
+        setLanguage: path.join(__dirname, 'helpers.js'),
+    },
     // Layout regions (steps-core/regions.js) beyond the defaults. All three portals have a <header> and an <aside>
     // (the sidebar); their modals are Radix dialogs (role=dialog, id <name>-modal), already a default; toasts have
     // no role, only ids toast-<type>-<random>-*. There is no <main>: the main area is whatever is outside the others.
@@ -42,6 +49,16 @@ module.exports = {
                 }
                 return loginOps(app, { env: `${prefix}_EMAIL` }, { env: `${prefix}_PASSWORD` }, ctx);
             },
+        },
+        {
+            usage: 'I should see the dark theme | see the light theme   (the active theme, from the class on <html>)',
+            pattern: /^(?:i )?(?:should )?see (?:the )?(dark|light) (?:theme|mode)$/i,
+            build: (m) => [{ op: 'call', fn: 'expectTheme', args: [PAGE, V(m[1].toLowerCase())] }],
+        },
+        {
+            usage: 'I switch the language to English | change language to Arabic   (sets it, whichever language the account was saved with)',
+            pattern: /^(?:i )?(?:switch|change|set) (?:the )?language to (english|arabic)$/i,
+            build: (m) => [{ op: 'call', fn: 'setLanguage', args: [PAGE, V(m[1].toLowerCase() === 'arabic' ? 'ar' : 'en')] }],
         },
     ],
 };
