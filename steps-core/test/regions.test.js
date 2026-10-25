@@ -116,3 +116,35 @@ test('a noted first box of a split input resolves to every box', () => {
     const resolve = createResolver([otp], { flowData: flow });
     assert.equal(resolve({}, 'supplier', 'field', 'OTP').ids.length, 4);
 });
+
+test('"in the <region>" scopes the text checks and waits, "the" optional', () => {
+    const target = (text) => build(text).ops[0].target;
+    assert.deepEqual(target('I should see "English" in the header').region, 'header');
+    assert.equal(target('I should see "English" in header up to 15 seconds').region, 'header');
+    assert.equal(build('I should see "English" in header up to 15 seconds').ops[0].timeout, 15000);
+    assert.equal(target('expect text "Saved" in the modal').region, 'modal');
+    assert.equal(target('I wait till "Saved" appears in the toast up to 5 seconds').region, 'toast');
+    assert.equal(target('I wait till "Confirm" disappears in the modal').region, 'modal');
+    assert.equal(build('I wait till "Confirm" disappears in the modal').ops[0].state, 'hidden');
+    // without a region the target is unchanged
+    assert.deepEqual(target('I should see "English"'), { text: { v: 'English' } });
+    assert.deepEqual(build('I should see "English" up to 15 seconds').ops[0].timeout, 15000);
+    // a region on an #id wait is an error, not silently ignored
+    assert.ok(build('I wait till #save-btn disappears in the modal').errors.length);
+});
+
+test('a region emits the portal\'s selector for the text lookup', () => {
+    const { emit } = require('../emit-playwright');
+    const css = cssFor(regionsFor({ packs: [], apps: { admin: {} } }, 'admin'), 'header');
+    const ir = { title: 't', source: 's', multi: false, timeoutMs: null, preamble: [], imports: [],
+        steps: [{ src: { line: 1, text: 'x' }, app: 'admin', kind: 'action', ops: [{ op: 'expectVisible', target: { text: { v: 'English' }, region: 'header', css } }] }] };
+    const out = emit(ir, { testsDir: '/tmp/t', apps: { admin: { urlEnv: 'ADMIN_URL' } } });
+    assert.match(out, /page\.locator\('.*header.*'\)\.getByText\('English'\)\.first\(\)/);
+});
+
+test('"the" is optional in "in the <region>" for every region step', () => {
+    assert.equal(build('I click "Orders" in sidebar', { id: 'x' }).asked[0].region, 'sidebar');
+    assert.equal(build('I enter "x" in Search in header', { id: 'x' }).asked[0].region, 'header');
+    assert.equal(build('I check Terms in modal', { id: 'x' }).asked[0].region, 'modal');
+    assert.equal(build('I select "Riyadh" in City in main', { id: 'x' }).asked[0].region, 'main');
+});

@@ -10,6 +10,7 @@ const { buildRegistry } = require('./registry');
 const { loadCatalog, loadFlows, knownIds, isKnown } = require('./catalog');
 const { createResolver } = require('./resolve');
 const { CORE_HELPERS, PAGE, V } = require('./intents');
+const { regionsFor, cssFor } = require('./regions');
 
 // actions that touch an element; in a probe each is preceded by autoSnapshot so every page reached is recorded
 const ACTIONS = ['fill', 'type', 'click', 'check', 'select', 'upload'];
@@ -98,6 +99,16 @@ function compile({ title, steps, source }, config, opts = {}) {
             ops = ops.filter((op) => op !== switchTo);
             if (!ops.length) continue;
         }
+        // a text target narrowed to a region ("... in the header") carries that region's selector for the emitter
+        ops = ops.map((op) => {
+            if (!op.target || !op.target.region) return op;
+            try {
+                return { ...op, target: { ...op.target, css: cssFor(regionsFor(config, app), op.target.region) } };
+            } catch (e) {
+                errors.push(`line ${step.line}: ${e.message}`);
+                return op;
+            }
+        });
         if (opts.probe) {
             ops = ops.flatMap((op) => (ACTIONS.includes(op.op) && op.target && op.target.id
                 ? [{ op: 'call', fn: 'autoSnapshot', args: [PAGE, V(app), V(`#${op.target.id}`)] }, op]

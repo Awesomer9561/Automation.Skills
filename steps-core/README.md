@@ -27,7 +27,9 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
   `modal`, `toast`, `sidebar`, `header`, else `main`), by CSS selector, first match wins. Defaults are `[role=dialog]`,
   `aside`, `header`; a pack's `regions`, the config's `regions` and `apps.<app>.regions` override them in that order
   (`null` switches one off for a portal). A step narrows a name with `in the <region>`: `I click "Orders" in the sidebar`,
-  `I enter "x" in Search in the app header` (click, check, select, enter). The same text in two regions is otherwise an
+  `I enter "x" in Search in the app header` (click, check, select, enter; "the" is optional). The text checks take it too, scoped to
+  that part of the page: `I should see "English" in the header`, `expect text "Saved" in the modal`,
+  `I wait till "Saved" appears in the toast`, `I wait till "Confirm" disappears in the modal`. The same text in two regions is otherwise an
   ambiguity error that names the regions. Pages recorded before regions existed carry no `region`; re-probe them.
 - **Custom dropdowns** (shadcn/Radix `button[role=combobox]`): `I select "Pending" in Client Order Filter` finds the
   dropdown by its title (the `<label>` beside it, or its `aria-label`/`title`). `gen` emits a click on the trigger's

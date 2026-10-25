@@ -25,6 +25,7 @@ function locator(t) {
     if (t.id) return `locator('#${t.id}')`;
     if (t.idPrefix) return `locator('[id^="${t.idPrefix}"]').first()`;
     if (t.idValue) return `locator(${str({ v: `[id="${t.idValue.v}"${t.ignoreCase ? ' i' : ''}]` })}).first()`;
+    if (t.text && t.css) return `locator(${quote(t.css)}).getByText(${str(t.text)}).first()`;
     if (t.text) return `getByText(${str(t.text)}).first()`;
     if (t.regex) return `getByText(${regex(t.regex)}).first()`;
     throw new Error(`unknown target ${JSON.stringify(t)}`);

@@ -22,7 +22,8 @@
 //   { op: 'setVar', name, gen }                     gen: { fn } (helper returning the value) | { unique, digits } | { env }
 //   { op: 'record', type, key }                     adds the entity to the local test-data ledger
 // Targets: { id } | { idPrefix } (first element whose id starts with it) | { idValue: value, ignoreCase? } (id built
-//          from {var}s, e.g. orders-list-{orderNumber}) | { text: value } | { regex }
+//          from {var}s, e.g. orders-list-{orderNumber}) | { text: value, region? } | { regex }
+//          (region: a layout region name; compile.js adds `css`, that region's selector, for the emitter)
 // Values: { v: 'text with {var}s' } | { env: 'VAR_NAME' } (read at run time; fails if unset). Call args: PAGE, a value, or { obj: { key: value } }. Regex: { source, flags }.
 
 const { regionOf, wordsPattern } = require('./regions');
@@ -49,8 +50,10 @@ const VALUE = '(\\{\\w+\\}|"[^"]*")';        // {var} or "literal"
 const NAME = '([^#"{].*?)';                     // a label or button text as shown on screen (not an #id)
 const VALUE_OR_NUMBER = '(\\{\\w+\\}|"[^"]*"|\\d+)';  // as VALUE, or a bare number ("I enter 2 in OTP field 1")
 // "... in the sidebar" narrows a name to one part of the layout (see regions.js); words are the region aliases
-const REGION = `(?: (?:in|from|on|within) the ${wordsPattern()})?`;
+const REGION = `(?: (?:in|from|on|within)(?: the)? ${wordsPattern()})?`;
 const regionKey = (word) => (word ? regionOf(word) : undefined);
+// A text target, narrowed to a layout region when the step names one ("I should see "x" in the header").
+const textTarget = (text, word) => ({ text: V(text), ...(word ? { region: regionOf(word) } : {}) });
 
 // A step that names an element by its label/text: the catalog's id when a probe recorded it; during a probe, a
 // runtime lookup by label (which records the page for next time); otherwise an error asking for a probe.
@@ -126,9 +129,9 @@ const PHRASINGS = [
         },
     },
     {
-        usage: 'I wait till "text" appears [up to 30 seconds]   (also: until|for, loads|shows|is visible, wait for "text" to appear)',
-        pattern: new RegExp(`${WAIT} ${Q}${SHOWN}${UP_TO}$`, 'i'),
-        build: (m, ctx) => [{ op: 'waitFor', target: { text: V(m[1]) }, state: 'visible', timeout: waitMs(ctx, m[2], m[3]) }],
+        usage: 'I wait till "text" appears [in the header] [up to 30 seconds]   (also: until|for, loads|shows|is visible, wait for "text" to appear)',
+        pattern: new RegExp(`${WAIT} ${Q}${SHOWN}${REGION}${UP_TO}$`, 'i'),
+        build: (m, ctx) => [{ op: 'waitFor', target: textTarget(m[1], m[2]), state: 'visible', timeout: waitMs(ctx, m[3], m[4]) }],
     },
     {
         usage: 'I wait till #element-id loads [up to 1 minute]   (also: appears|shows|is visible, to load|to appear)',
@@ -136,14 +139,20 @@ const PHRASINGS = [
         build: (m, ctx) => [{ op: 'waitFor', target: byId(m[1]), state: 'visible', timeout: waitMs(ctx, m[2], m[3]) }],
     },
     {
-        usage: 'I wait till #element-id|"text" disappears [up to 30 seconds]   (also: goes away|closes|is gone|is hidden, to disappear)',
-        pattern: new RegExp(`${WAIT} (?:${ID}|${Q}) ${GONE}${UP_TO}$`, 'i'),
-        build: (m, ctx) => [{
-            op: 'waitFor',
-            target: m[1] ? byId(m[1]) : { text: V(m[2]) },
-            state: 'hidden',
-            timeout: waitMs(ctx, m[3], m[4]),
-        }],
+        usage: 'I wait till #element-id|"text" disappears [in the modal] [up to 30 seconds]   (also: goes away|closes|is gone|is hidden, to disappear; a region only narrows "text")',
+        pattern: new RegExp(`${WAIT} (?:${ID}|${Q}) ${GONE}${REGION}${UP_TO}$`, 'i'),
+        build: (m, ctx) => {
+            if (m[1] && m[3]) {
+                ctx.error(`${m[1]} is an id, so "in the ${m[3]}" does nothing; drop it`);
+                return [];
+            }
+            return [{
+                op: 'waitFor',
+                target: m[1] ? byId(m[1]) : textTarget(m[2], m[3]),
+                state: 'hidden',
+                timeout: waitMs(ctx, m[4], m[5]),
+            }];
+        },
     },
     {
         usage: 'I wait till page loads [up to 30 seconds]   (also: is loaded, wait for the page to load)',
@@ -285,14 +294,14 @@ const PHRASINGS = [
         build: (m) => [{ op: 'fill', target: byId(m[1]), value: V(m[2]) }],
     },
     {
-        usage: 'expect text "text"',
-        pattern: new RegExp(`^expect text ${Q}$`, 'i'),
-        build: (m) => [{ op: 'expectVisible', target: { text: V(m[1]) } }],
+        usage: 'expect text "text" [in the header]',
+        pattern: new RegExp(`^expect text ${Q}${REGION}$`, 'i'),
+        build: (m) => [{ op: 'expectVisible', target: textTarget(m[1], m[2]) }],
     },
     {
-        usage: 'I should see "text" [up to 30 seconds]',
-        pattern: new RegExp(`^(?:i )?should see (?:the text )?${Q}${UP_TO}$`, 'i'),
-        build: (m, ctx) => [{ op: 'expectVisible', target: { text: V(m[1]) }, timeout: waitMs(ctx, m[2], m[3]) }],
+        usage: 'I should see "text" [in the header] [up to 30 seconds]',
+        pattern: new RegExp(`^(?:i )?should see (?:the text )?${Q}${REGION}${UP_TO}$`, 'i'),
+        build: (m, ctx) => [{ op: 'expectVisible', target: textTarget(m[1], m[2]), timeout: waitMs(ctx, m[3], m[4]) }],
     },
     {
         usage: 'expect visible #element-id',
