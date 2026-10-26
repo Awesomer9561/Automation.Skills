@@ -37,11 +37,12 @@ function redact(text, names = knownNames) {
 
 // Repeated clickable elements whose ids differ only in the last part (orders-list-testorder518, orders-list-e2e123...):
 // one entry per family, so `gen` can target a record by its number ("I click {orderNumber}"). Only the shared prefix
-// is stored, never the record parts.
+// is stored, never the record parts. Calendar days (an id ending in a full date) are not families.
 function cardFamilies(elements) {
     const groups = new Map();
     for (const e of elements) {
         if (!e.id || !(e.tag === 'a' || e.tag === 'button' || e.clickable)) continue;
+        if (/\d{4}-\d{2}-\d{2}$/.test(e.id)) continue;   // calendar days are not records
         const prefix = e.id.replace(/[^-]+$/, '');
         if (!prefix || prefix === e.id) continue;
         const g = groups.get(prefix) || { prefix, tag: e.tag, count: 0 };
@@ -198,4 +199,4 @@ function noteName(kind, name, id) {
     writeFlow();
 }
 
-module.exports = { snapshotPage, autoSnapshot, noteName, visibleIds, redact };
+module.exports = { snapshotPage, autoSnapshot, noteName, visibleIds, redact, cardFamilies };
