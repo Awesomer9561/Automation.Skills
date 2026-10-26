@@ -40,6 +40,12 @@ function arg(a, page) {
 function genExpr(gen) {
     if (gen.fn) return `${gen.fn}()`;
     if (gen.env) return `process.env.${gen.env} || missingEnv('${gen.env}')`;
+    if (gen.letters) {
+        const lower = (n) => `Array.from({ length: ${n} }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join('')`;
+        return gen.capitalize
+            ? `String.fromCharCode(65 + Math.floor(Math.random() * 26)) + ${lower(gen.letters - 1)}`
+            : lower(gen.letters);
+    }
     const digits = `\${Date.now().toString().slice(-${gen.digits})}`;
     return '`' + escapeTemplate(gen.unique).replace('{unique}', digits) + '`';
 }

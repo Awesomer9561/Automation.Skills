@@ -19,7 +19,8 @@
 //   { op: 'goto', app, path }                       { op: 'switchApp', app } (may be followed by more ops)
 //   { op: 'call', fn, args, construct?, method? }   fn is a helper name mapped in steps.config.js `helpers`;
 //                                                   with construct: `new fn(...construct).method(...args)`
-//   { op: 'setVar', name, gen }                     gen: { fn } (helper returning the value) | { unique, digits } | { env }
+//   { op: 'setVar', name, gen }                     gen: { fn } (helper returning the value) | { unique, digits } | { env } |
+//                                                   { letters: n, capitalize? } (n random letters, e.g. a name for fields that reject digits)
 //   { op: 'record', type, key }                     adds the entity to the local test-data ledger
 // Targets: { id } | { idPrefix } (first element whose id starts with it) | { idValue: value, ignoreCase? } (id built
 //          from {var}s, e.g. orders-list-{orderNumber}) | { text: value, region? } | { regex }
@@ -340,7 +341,12 @@ const CORE_HELPERS = {
 };
 
 module.exports = {
-    core: { name: 'core', phrasings: PHRASINGS },
+    core: {
+        name: 'core',
+        phrasings: PHRASINGS,
+        // `set {lastName} to random name`: letters only (fields such as First/Last Name reject digits), new every run
+        generators: { 'random name': { letters: 8, capitalize: true } },
+    },
     CORE_HELPERS,
     // for packs
     V, PAGE, re, byId, varOrText, Q, ID,

@@ -46,6 +46,9 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
 
 - **IR** (op list at the top of `intents.js`) is plain data: ids, values with `{var}`s, helper names. No code. The
   emitter is the only Playwright-aware module; another emitter (e.g. playwright-bdd) can consume the same IR.
+- **Generators** (`set {name} to random <kind>`): the core has `random name` (8 letters, first one capital, new every run;
+  for First/Last Name fields that reject digits). Packs add more under `generators`: `{ fn }` (a helper), `{ unique, digits }`,
+  `{ env }` or `{ letters, capitalize? }`.
 - **Packs** (`{ name, phrasings, generators, autoVars, regions }`) add steps. A phrasing is
   `{ usage, pattern, build(match, ctx) -> op[] }`; ctx is `{ app, addWait(ms), generator(name), error(msg) }`.
   Helpers are referenced by name (`{ op: 'call', fn: 'LoginPage', construct: [PAGE], method: 'login', args: [] }`)
