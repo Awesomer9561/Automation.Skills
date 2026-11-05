@@ -20,4 +20,83 @@ async function setLanguage(page, lang, toggleId = 'language-switcher-toggle-btn'
     await page.waitForLoadState('networkidle');
 }
 
-module.exports = { expectTheme, setLanguage };
+
+// Verifies a new account's email through yopmail.com (the test email domain), the way a user would: open the inbox,
+// open the "Verify Email Address" mail, click its link. Plain Playwright page calls, no @playwright/test import.
+//
+// Flow (same as CompanyPortal.Automation/utility/yopmail.js): inbox page -> #login + "Check Inbox" -> the mail renders
+// in iframe #ifmail -> click the link. The link opens in a new tab (or the same tab, handled too). Afterwards the
+// original `page` is sent to the app's root (appUrl), where the verified user's Keycloak session resumes the sign-up,
+// so the steps after this one keep using `page`.
+
+const STEP_DELAY = 2000;    // pause between yopmail actions (the Company specs use 2-5s): yopmail is slow and rate limits quick clicks
+const MAIL_DELAY = 5000;    // after sign-up, before opening the inbox: time for Keycloak to send the mail
+const INBOX_TIMEOUT = 90000;
+const CHALLENGE_TIMEOUT = 180000;   // how long a person has to tick yopmail's "Verify you are human" box
+const VERIFY_LINK = 'Verify Email Address';
+
+async function openInbox(mail, email) {
+    // yopmail is sometimes slow or rate limited: retry the page load until the login box shows
+    for (const start = Date.now(); ; ) {
+        try {
+            await mail.goto('https://yopmail.com/en', { waitUntil: 'domcontentloaded', timeout: 15000 });
+            await mail.locator('#login').waitFor({ state: 'visible', timeout: 5000 });
+            break;
+        } catch (e) {
+            if (Date.now() - start > 60000) throw new Error(`yopmail.com did not load: ${e.message}`);
+            await mail.waitForTimeout(3000);
+        }
+    }
+    await mail.waitForTimeout(STEP_DELAY);
+    await mail.locator('#login').fill(email);
+    await mail.waitForTimeout(STEP_DELAY);
+    await mail.locator('button[title="Check Inbox @yopmail.com"]').click();
+    await mail.waitForTimeout(STEP_DELAY);
+}
+
+// yopmail sometimes puts a Cloudflare "Verify you are human" check in front of the inbox. The step does not try to
+// pass it: it waits for a person to tick the box (run headed: `npx playwright test <spec> --headed`).
+async function waitForHumanCheck(mail) {
+    const check = mail.getByText('Verify you are human');
+    await mail.waitForTimeout(3000);
+    if (!(await check.count())) return;
+    console.log('\n>>> yopmail is asking to "Verify you are human". Tick the box in the browser window (run with --headed); waiting up to ' + CHALLENGE_TIMEOUT / 1000 + 's.\n');
+    try {
+        await check.first().waitFor({ state: 'detached', timeout: CHALLENGE_TIMEOUT });
+    } catch {
+        throw new Error('yopmail "Verify you are human" check was not completed: run headed and tick the box, or verify the email another way');
+    }
+}
+
+async function verifyEmailOnYopmail(page, email, appUrl) {
+    const context = page.context();
+    await page.waitForTimeout(MAIL_DELAY);
+    const mail = await context.newPage();
+    try {
+        await openInbox(mail, email);
+        await waitForHumanCheck(mail);
+        const link = mail.frameLocator('#ifmail').getByRole('link', { name: VERIFY_LINK });
+        // the mail can take a few seconds: refresh the inbox until it is open
+        for (const start = Date.now(); !(await link.count()); ) {
+            if (Date.now() - start > INBOX_TIMEOUT) throw new Error(`no "${VERIFY_LINK}" mail for ${email} after ${INBOX_TIMEOUT / 1000}s`);
+            await mail.locator('#refresh').click().catch(() => {});
+            await mail.waitForTimeout(4000);
+        }
+        await mail.waitForTimeout(STEP_DELAY);
+        const [verifyTab] = await Promise.all([
+            context.waitForEvent('page', { timeout: 15000 }).catch(() => null),
+            link.click(),
+        ]);
+        const landed = verifyTab || mail;
+        await landed.waitForTimeout(STEP_DELAY);
+        await landed.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
+        await landed.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        if (verifyTab) await verifyTab.close();
+    } finally {
+        await mail.close();
+    }
+    await page.bringToFront();
+    await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+}
+
+module.exports = { expectTheme, setLanguage, verifyEmailOnYopmail };

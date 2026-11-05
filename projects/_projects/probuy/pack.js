@@ -5,6 +5,7 @@ const path = require('path');
 const { byId, V, PAGE } = require('../../../steps-core/intents');
 
 const LOGIN_MS = 60000;
+const YOPMAIL_MS = 300000;   // mail wait (90s) + a person ticking yopmail's human check (180s) + page loads
 
 // Open the portal's root, sign in on the Keycloak form, and wait for the form to go.
 const loginOps = (app, email, password, ctx) => {
@@ -28,6 +29,7 @@ module.exports = {
     helpers: {
         expectTheme: path.join(__dirname, 'helpers.js'),
         setLanguage: path.join(__dirname, 'helpers.js'),
+        verifyEmailOnYopmail: path.join(__dirname, 'helpers.js'),
     },
     // Layout regions (steps-core/regions.js) beyond the defaults. All three portals have a <header> and an <aside>
     // (the sidebar); their modals are Radix dialogs (role=dialog, id <name>-modal), already a default; toasts have
@@ -59,6 +61,11 @@ module.exports = {
             usage: 'I switch the language to English | change language to Arabic   (sets it, whichever language the account was saved with)',
             pattern: /^(?:i )?(?:switch|change|set) (?:the )?language to (english|arabic)$/i,
             build: (m) => [{ op: 'call', fn: 'setLanguage', args: [PAGE, V(m[1].toLowerCase() === 'arabic' ? 'ar' : 'en')] }],
+        },
+        {
+            usage: 'I verify {email} on yopmail   (Keycloak sign-up sends a verification mail: opens yopmail.com, that inbox, clicks "Verify Email Address", then returns to the portal root, <APP>_URL; if yopmail shows its human check, run headed and tick the box)',
+            pattern: /^(?:i )?verify (?:the )?(?:email )?(\{\w+\}|"[^"]*")(?: (?:on|in|through|via) yopmail)?$/i,
+            build: (m, ctx) => ctx.addWait(YOPMAIL_MS) || [{ op: 'call', fn: 'verifyEmailOnYopmail', args: [PAGE, V(m[1].replace(/^"|"$/g, '')), { env: `${ctx.app.toUpperCase()}_URL` }] }],
         },
     ],
 };

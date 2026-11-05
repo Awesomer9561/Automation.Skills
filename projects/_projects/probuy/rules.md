@@ -94,6 +94,8 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
   account/name element (not yet looked up) before probing, and re-check `knowledge/` for the name.*
 
 ## Test data
+- Email verification: Keycloak sign-up on every portal sends a verification mail. `I verify {email} on yopmail` (pack.js, helper in
+  `helpers.js`) opens the yopmail inbox, clicks "Verify Email Address" and returns the test's page to the portal root (`<APP>_URL`).
 - Emails: `set {email} to unique "test{unique}@yopmail.com"` (yopmail inboxes are public; never use real addresses).
 - VAT: 15 digits (`unique "3000000{unique}"`). IBAN `SA0380000000608010167519`. Address: building `102`,
   street `Olaya Street`, district `Al Olaya District`, zip `12211`, additional no. `4532679777`.

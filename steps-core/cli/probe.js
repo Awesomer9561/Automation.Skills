@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Runs a steps file in probe mode and records every page it reaches into <knowledgeDir>/pages/.
-//   npm run probe -- steps/supplier_registration.txt
+//   npm run probe -- steps/supplier_registration.txt [--headed]   (extra args go to playwright test)
 //
 // Any steps file works, including the one QA wrote for the test: steps that name fields and buttons by label/text
 // ("I enter "Abdul" in First name", "I click "Get OTP"") are looked up in the live page, and each new page is
@@ -61,7 +61,7 @@ module.exports = {
 let status = 1;
 try {
     const configArgs = repoConfig ? ['--config', path.relative(root, probeConfig)] : [];
-    status = spawnSync('npx', ['playwright', 'test', path.relative(root, spec), ...configArgs, '--reporter=line'], {
+    status = spawnSync('npx', ['playwright', 'test', path.relative(root, spec), ...configArgs, '--reporter=line', ...process.argv.slice(3)], {
         cwd: root, stdio: 'inherit', env: { ...process.env, PROBE: '1', PROBE_FLOW: base },
     }).status;
 } finally {

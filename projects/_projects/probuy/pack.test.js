@@ -23,3 +23,8 @@ test('theme and language steps call the pack helpers', () => {
 test('plain "I should see" text is not taken by the theme step', () => {
     assert.equal(build('I should see "dark theme"')[0].op, 'expectVisible');
 });
+
+test('verify email step calls the yopmail helper with the portal URL variable', () => {
+    assert.deepEqual(build('I verify {email} on yopmail'), [{ op: 'call', fn: 'verifyEmailOnYopmail', args: [PAGE, V('{email}'), { env: 'ADMIN_URL' }] }]);
+    assert.ok(require('fs').existsSync(pack.helpers.verifyEmailOnYopmail));
+});
