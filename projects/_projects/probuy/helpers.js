@@ -55,7 +55,7 @@ async function openInbox(mail, email) {
 }
 
 // yopmail sometimes puts a Cloudflare "Verify you are human" check in front of the inbox. The step does not try to
-// pass it: it waits for a person to tick the box (run headed: `npx playwright test <spec> --headed`).
+// pass it: it waits for a person to tick the box (run headed, or set YOPMAIL_CDP_URL to use your own Chrome).
 async function waitForHumanCheck(mail) {
     const check = mail.getByText('Verify you are human');
     await mail.waitForTimeout(3000);
@@ -68,34 +68,70 @@ async function waitForHumanCheck(mail) {
     }
 }
 
-async function verifyEmailOnYopmail(page, email, appUrl) {
-    const context = page.context();
-    await page.waitForTimeout(MAIL_DELAY);
-    const mail = await context.newPage();
-    try {
-        await openInbox(mail, email);
-        await waitForHumanCheck(mail);
-        const link = mail.frameLocator('#ifmail').getByRole('link', { name: VERIFY_LINK });
-        // the mail can take a few seconds: refresh the inbox until it is open
-        for (const start = Date.now(); !(await link.count()); ) {
-            if (Date.now() - start > INBOX_TIMEOUT) throw new Error(`no "${VERIFY_LINK}" mail for ${email} after ${INBOX_TIMEOUT / 1000}s`);
-            await mail.locator('#refresh').click().catch(() => {});
-            await mail.waitForTimeout(4000);
-        }
-        await mail.waitForTimeout(STEP_DELAY);
-        const [verifyTab] = await Promise.all([
-            context.waitForEvent('page', { timeout: 15000 }).catch(() => null),
-            link.click(),
-        ]);
-        const landed = verifyTab || mail;
-        await landed.waitForTimeout(STEP_DELAY);
-        await landed.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
-        await landed.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-        if (verifyTab) await verifyTab.close();
-    } finally {
-        await mail.close();
+// Opens the yopmail inbox for `email` on `mail` and returns the "Verify Email Address" link once the mail has arrived.
+async function findVerifyLink(mail, email) {
+    await openInbox(mail, email);
+    await waitForHumanCheck(mail);
+    const link = mail.frameLocator('#ifmail').getByRole('link', { name: VERIFY_LINK });
+    // the mail can take a few seconds: refresh the inbox until it is open
+    for (const start = Date.now(); !(await link.count()); ) {
+        if (Date.now() - start > INBOX_TIMEOUT) throw new Error(`no "${VERIFY_LINK}" mail for ${email} after ${INBOX_TIMEOUT / 1000}s`);
+        await mail.locator('#refresh').click().catch(() => {});
+        await mail.waitForTimeout(4000);
     }
-    await page.bringToFront();
+    await mail.waitForTimeout(STEP_DELAY);
+    return link;
+}
+
+// YOPMAIL_CDP_URL (e.g. http://localhost:9222) = a Chrome the person started with --remote-debugging-port, where they
+// already passed yopmail's human check (see rules.md). The inbox is read in a new tab of that browser; the verify link's
+// URL is then opened by the test's own page, so the sign-up carries on in the test's session.
+async function verifyViaOwnBrowser(page, email, cdpUrl) {
+    // the repo's own Playwright (this file lives outside the repo)
+    const { chromium } = require(require.resolve('@playwright/test', { paths: [process.cwd()] }));
+    const browser = await chromium.connectOverCDP(cdpUrl).catch((e) => {
+        throw new Error(`YOPMAIL_CDP_URL=${cdpUrl} is not answering: start the yopmail Chrome first (\`npm run chrome:yopmail\`, see YOPMAIL-SETUP.md). ${e.message.split('\n')[0]}`);
+    });
+    let href;
+    try {
+        const context = browser.contexts()[0];
+        if (!context) throw new Error(`no browser window found at ${cdpUrl}`);
+        const mail = await context.newPage();
+        try {
+            href = await (await findVerifyLink(mail, email)).getAttribute('href');
+        } finally {
+            await mail.close();
+        }
+    } finally {
+        await browser.close();   // only disconnects: the person's Chrome stays open
+    }
+    if (!href) throw new Error('the "Verify Email Address" link has no href');
+    await page.goto(href, { waitUntil: 'domcontentloaded' });
+}
+
+async function verifyEmailOnYopmail(page, email, appUrl) {
+    await page.waitForTimeout(MAIL_DELAY);
+    if (process.env.YOPMAIL_CDP_URL) {
+        await verifyViaOwnBrowser(page, email, process.env.YOPMAIL_CDP_URL);
+    } else {
+        const context = page.context();
+        const mail = await context.newPage();
+        try {
+            const link = await findVerifyLink(mail, email);
+            const [verifyTab] = await Promise.all([
+                context.waitForEvent('page', { timeout: 15000 }).catch(() => null),
+                link.click(),
+            ]);
+            const landed = verifyTab || mail;
+            await landed.waitForTimeout(STEP_DELAY);
+            await landed.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
+            await landed.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+            if (verifyTab) await verifyTab.close();
+        } finally {
+            await mail.close();
+        }
+        await page.bringToFront();
+    }
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
 }
 

@@ -6,10 +6,10 @@ const { PAGE, V } = require('../../../steps-core/intents');
 const pack = require('./pack');
 
 const registry = buildRegistry([pack]);
-const build = (text) => {
+const build = (text, app = 'admin') => {
     const hit = registry.match(text);
     assert.ok(hit && !hit.ambiguous, `"${text}" should match exactly one phrasing`);
-    return hit.phrasing.build(hit.m, { app: 'admin', addWait() {}, error() {} });
+    return hit.phrasing.build(hit.m, { app, addWait() {}, error: (msg) => { throw new Error(msg); } });
 };
 
 test('theme and language steps call the pack helpers', () => {
@@ -27,4 +27,12 @@ test('plain "I should see" text is not taken by the theme step', () => {
 test('verify email step calls the yopmail helper with the portal URL variable', () => {
     assert.deepEqual(build('I verify {email} on yopmail'), [{ op: 'call', fn: 'verifyEmailOnYopmail', args: [PAGE, V('{email}'), { env: 'ADMIN_URL' }] }]);
     assert.ok(require('fs').existsSync(pack.helpers.verifyEmailOnYopmail));
+});
+
+test('document card upload builds the card input id from the title (supplier only)', () => {
+    assert.deepEqual(build('I upload "documents/a.pdf" to document "New Commercial Document (New Doc)"', 'supplier'),
+        [{ op: 'upload', target: { id: 'register-docs-new-commercial-document-new-doc-upload-input' }, file: V('./documents/a.pdf') }]);
+    assert.deepEqual(build('I upload "documents/a.pdf" to profile document "Zakat And Tax Certificate"', 'supplier'),
+        [{ op: 'upload', target: { id: 'profile-documents-zakat-and-tax-certificate-upload-input' }, file: V('./documents/a.pdf') }]);
+    assert.throws(() => build('I upload "documents/a.pdf" to document "Zakat And Tax Certificate"', 'company'), /not mapped/);
 });

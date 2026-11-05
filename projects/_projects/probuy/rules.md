@@ -96,6 +96,16 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
 ## Test data
 - Email verification: Keycloak sign-up on every portal sends a verification mail. `I verify {email} on yopmail` (pack.js, helper in
   `helpers.js`) opens the yopmail inbox, clicks "Verify Email Address" and returns the test's page to the portal root (`<APP>_URL`).
+  Yopmail may show a Cloudflare "Verify you are human" check; the step never tries to pass it. To keep a person's tick: start Chrome with
+  `open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.yopmail-chrome"`, tick the box once on yopmail.com,
+  and set `YOPMAIL_CDP_URL=http://localhost:9222` in the repo's `.env`: the inbox is then read in that window and the test opens the link.
+  Full setup: `YOPMAIL-SETUP.md`.
+- Document cards (supplier): registration, resubmission and the profile page show one card per document type the admin configured.
+  `I upload "documents/x.pdf" to document "<card title>"` (registration and resubmission, `register-docs-<slug>-upload-input`) or
+  `... to profile document "<card title>"` (profile, `profile-documents-<slug>-upload-input`), one step per card; the slug is the
+  card title lower-cased with other characters as `-`. On the profile page the inputs appear only after the "missing documents"
+  banner action (`#profile-missing-docs-btn-action-btn`) is clicked, and only for cards still missing a file; adding a file to a
+  card that already has one is not probed yet. A missed required card on registration leaves "Agree and Proceed" disabled.
 - Emails: `set {email} to unique "test{unique}@yopmail.com"` (yopmail inboxes are public; never use real addresses).
 - VAT: 15 digits (`unique "3000000{unique}"`). IBAN `SA0380000000608010167519`. Address: building `102`,
   street `Olaya Street`, district `Al Olaya District`, zip `12211`, additional no. `4532679777`.

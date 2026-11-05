@@ -7,6 +7,19 @@ const { byId, V, PAGE } = require('../../../steps-core/intents');
 const LOGIN_MS = 60000;
 const YOPMAIL_MS = 300000;   // mail wait (90s) + a person ticking yopmail's human check (180s) + page loads
 
+// Document cards: one card per document type the admin configured; each card's file input has an id built from the card
+// title ("New Commercial Document (New Doc)" -> new-commercial-document-new-doc). Verified on the Supplier portal (dev,
+// 2026-11-05): registration (/register/documents) and resubmission (/auth/upload-documents) share the register-docs-* ids; the
+// profile page (/profile) shows one input per still-missing card after the "missing documents" banner action is clicked.
+// Other portals are added here once probed.
+const DOC_INPUT_ID = {
+    supplier: {
+        page: (slug) => `register-docs-${slug}-upload-input`,
+        profile: (slug) => `profile-documents-${slug}-upload-input`,
+    },
+};
+const slugOf = (title) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
 // Open the portal's root, sign in on the Keycloak form, and wait for the form to go.
 const loginOps = (app, email, password, ctx) => {
     ctx.addWait(2 * LOGIN_MS);
@@ -66,6 +79,24 @@ module.exports = {
             usage: 'I verify {email} on yopmail   (Keycloak sign-up sends a verification mail: opens yopmail.com, that inbox, clicks "Verify Email Address", then returns to the portal root, <APP>_URL; if yopmail shows its human check, run headed and tick the box)',
             pattern: /^(?:i )?verify (?:the )?(?:email )?(\{\w+\}|"[^"]*")(?: (?:on|in|through|via) yopmail)?$/i,
             build: (m, ctx) => ctx.addWait(YOPMAIL_MS) || [{ op: 'call', fn: 'verifyEmailOnYopmail', args: [PAGE, V(m[1].replace(/^"|"$/g, '')), { env: `${ctx.app.toUpperCase()}_URL` }] }],
+        },
+        {
+            usage: 'I upload "documents/file.pdf" to document "Zakat And Tax Certificate" | to profile document "..."   (the document card with that title: on the registration / resubmission documents page, or with "profile" on the profile page; one step per card; supplier portal)',
+            pattern: /^(?:i )?upload "([^"]+)" (?:to|for|in|into) (?:the )?(profile )?document(?: card)? "([^"]+)"$/i,
+            build: (m, ctx) => {
+                const ids = DOC_INPUT_ID[ctx.app];
+                if (!ids) {
+                    ctx.error(`document card uploads are not mapped for the ${ctx.app} portal yet (probuy/pack.js DOC_INPUT_ID)`);
+                    return [];
+                }
+                const slug = slugOf(m[3]);
+                if (!slug) {
+                    ctx.error(`document card title "${m[3]}" has no letters or digits`);
+                    return [];
+                }
+                const idOf = m[2] ? ids.profile : ids.page;
+                return [{ op: 'upload', target: byId(`#${idOf(slug)}`), file: V(m[1].startsWith('.') ? m[1] : `./${m[1]}`) }];
+            },
         },
     ],
 };
