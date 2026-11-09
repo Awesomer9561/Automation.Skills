@@ -1,15 +1,16 @@
 ---
 name: steps-to-spec
-description: Generate a Playwright spec from plain-text steps in an automation repo (steps-core pipeline, steps.config.js). Use when the user gives test steps (or a steps file) and wants a spec, when a new page/flow needs probing first, when `npm run gen` reports unmatched steps or unknown ids, or when setting up steps-core in a Playwright repo.
+description: Generate a Playwright spec from plain-text steps in an automation repo (steps-to-specs pipeline, steps.config.js). Use when the user gives test steps (or a steps file) and wants a spec, when a new page/flow needs probing first, when `npm run gen` reports unmatched steps or unknown ids, or when setting up steps-to-specs in a Playwright repo.
 ---
 
 # steps-to-spec
 
-The shared repo holding this skill has:
+This skill drives `steps-to-specs`, the generator: an npm package each automation repo installs
+(`npm i -D steps-to-specs`). Its README covers the IR, packs, config and CLIs. (`$CORE` below is its folder in the
+repo's `node_modules`; Step 0 finds it.)
 
-- `steps-core/`: the generator, an npm package each automation repo installs as
-  `"steps-core": "file:../Automation.Skills/steps-core"`. Its README covers the IR, packs, config and CLIs.
-- `projects/`: rules per project family and per repo (Step 0). Project facts go there, never into this file.
+Teams that keep a clone of the shared `Automation.Skills` repo also have `projects/`: rules per project family and per
+repo (Step 0). Project facts go there or in the repo's own `steps.rules.md`, never into this file.
 
 In a repo: steps live in `steps/<name>.steps.txt`; paths, apps, packs and helper mappings in `steps.config.js`; page
 knowledge in `knowledge/pages/<app>/<slug>.json`, one record per app + path shared by all steps files (the real ids,
@@ -19,12 +20,16 @@ plus `knowledge/flows/<name>.json` for the order one steps file visited them in.
 ## Step 0: Load the rules
 
 Works on macOS and Windows. Detect the OS first (`uname -s`, or `$env:OS` / `process.platform`): `Darwin` = macOS,
-`MINGW*`/`MSYS*`/`Windows_NT` = Windows. Locate the shared repo (`$SKILLS`) with Node, which is the same everywhere
-(the skill folder is a symlink on macOS, a junction on Windows; `realpath` resolves both):
+`MINGW*`/`MSYS*`/`Windows_NT` = Windows. Locate the generator (`$CORE`) from the repo with Node, which is the same
+everywhere:
 
 ```bash
-SKILLS=$(node -e "console.log(require('path').resolve(require('fs').realpathSync(require('os').homedir()+'/.claude/skills/steps-to-spec'),'../..'))")
+ROOT=$(git rev-parse --show-toplevel)
+CORE=$(node -e "console.log(require('path').dirname(require.resolve('steps-to-specs/package.json',{paths:[process.argv[1]]})))" "$ROOT")
 ```
+
+If that fails the repo is not set up (see Setup). Optional: a clone of the shared repo (`$SKILLS`), found as `$ROOT/../Automation.Skills`
+when it exists, holds the family rules and packs below.
 
 Windows notes: Git Bash runs the bash snippets as written; in PowerShell use `$env:` for variables, `Get-Content` for `cat`, and
 `2>$null` for `2>/dev/null`. Always build paths with `path.join` in code and write `/` in steps files and docs (Node and Playwright accept it
@@ -36,11 +41,13 @@ basename "$ROOT"                          # repo folder, e.g. SupplierPortal.Aut
 cat "$ROOT/.crossrepo.json" 2>/dev/null   # project family, e.g. {"project": "probuy", ...}
 ```
 
-1. **Project family**: if `.crossrepo.json` has a `project`, read `$SKILLS/projects/_projects/<project>/rules.md`.
-   This is the normal case.
+1. **Project family**: if `.crossrepo.json` has a `project` and `$SKILLS` exists, read
+   `$SKILLS/projects/_projects/<project>/rules.md`.
 2. **Repo override**: if `$SKILLS/projects/<repo-folder>/rules.md` exists, read it too; it wins over the family file.
-3. **Neither**: continue with this file's defaults and offer to create the family rules file. Never create a per-repo
-   file unprompted; it is for genuine differences only.
+3. **Repo rules**: if `$ROOT/steps.rules.md` exists, read it last; it wins over both. This is the place for rules when there is no
+   clone of the shared repo.
+4. **None of these**: continue with this file's defaults and offer to create `steps.rules.md`. Never create a per-repo
+   file in `$SKILLS` unprompted; it is for genuine differences only.
 
 When a probe or run proves or disproves something in those files, update the right one (the family file if every repo
 in the project is affected, otherwise the repo override) and mark it *verified on <env>, <date>*. Anything not marked
@@ -48,8 +55,8 @@ verified is a hypothesis.
 
 ## Setup (repo without `steps.config.js`)
 
-Say the repo is not set up and offer to add the `steps-core` devDependency and the `gen`, `gen:list`, `gen:check`,
-`probe`, `gen:ids` scripts (see the steps-core README), write `steps.config.js` (apps and their base-URL helpers from
+Say the repo is not set up and offer to add the `steps-to-specs` devDependency (`npm i -D steps-to-specs`) and the `gen`, `gen:list`, `gen:check`,
+`probe`, `gen:ids` scripts (see the package README), write `steps.config.js` (apps and their base-URL helpers from
 the repo's env module), and run `npm install`. Don't improvise a generator.
 
 ## Workflow
@@ -83,7 +90,7 @@ QA writes steps the way they read the screen; the generator turns them into an i
    reached are kept; `test-results/` has the screenshot, fix the step and re-run.
    - Check `npm run gen:ids -- <page or path>`: each page's path and headings should be the screen you expect.
    - Snapshots never store input values, link text or people's names (`identity` selectors in the config say where the
-     signed-in user's name is shown; see the steps-core README). A new portal needs its `identity` set before the first probe.
+     signed-in user's name is shown; see the package README). A new portal needs its `identity` set before the first probe.
      Still skim new `knowledge/pages/*.json` for anything personal
      before it is committed.
 3. **Generate:** `npm run gen -- steps/<name>.txt`. Each label/text is resolved to the recorded id, on the page the
@@ -93,9 +100,9 @@ QA writes steps the way they read the screen; the generator turns them into an i
    overwrite an existing spec without the user's OK (`--force`); afterwards `npm run gen:check` must pass.
 4. **Unmatched steps** (non-zero exit): run with `--report` to get them as JSON. Rephrase to a listed phrasing where
    the meaning is the same; otherwise add a phrasing `{ usage, pattern, build }` whose `build` returns IR ops (data,
-   never code strings; op list in `steps-core/intents.js`):
-   - generic to any web app: the core, `$SKILLS/steps-core/intents.js`;
-   - shared by a project family: `$SKILLS/projects/_projects/<project>/*.js`, listed in the repo's `steps.config.js` `packs`;
+   never code strings; op list in `$CORE/intents.js`):
+   - generic to any web app: the core, `$CORE/intents.js`;
+   - shared by a project family: `$SKILLS/projects/_projects/<project>/*.js` (a shared-repo clone), listed in the repo's `steps.config.js` `packs`;
    - this repo only, one-offs included: the repo's `steps.pack.js`.
 
    Show the user the new entry before adding it. Never hand-edit a generated spec: `npm run gen:check` fails on any
