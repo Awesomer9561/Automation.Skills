@@ -1,0 +1,12 @@
+{
+  "name": "automation-skills",
+  "owner": { "name": "Parvez Ali" },
+  "plugins": [
+    {
+      "name": "steps-to-spec",
+      "source": "./",
+      "description": "Turn plain-text test steps into Playwright specs: probe pages, write steps, generate, run.",
+      "version": "0.2.0"
+    }
+  ]
+}

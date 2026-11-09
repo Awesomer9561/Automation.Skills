@@ -66,7 +66,12 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
 
 ## Using it in a repo
 
-Clone `Automation.Skills` next to the repo, then in the repo:
+Install the package (published on npm as `steps-to-specs`; no clone needed), and the Claude skill that drives it:
+
+```bash
+npm i -D steps-to-specs
+npx steps-to-specs            # copies the steps-to-spec skill to ~/.claude/skills (--project: ./.claude/skills)
+```
 
 ```jsonc
 // package.json
@@ -76,8 +81,7 @@ Clone `Automation.Skills` next to the repo, then in the repo:
   "gen:check": "steps-gen --check",
   "probe": "steps-probe",
   "gen:ids": "steps-ids"
-},
-"devDependencies": { "steps-core": "file:../Automation.Skills/steps-core" }
+}
 ```
 
 ```js
@@ -85,10 +89,17 @@ Clone `Automation.Skills` next to the repo, then in the repo:
 module.exports = {
     apps: { web: { urlEnv: 'WEB_URL' } },          // `portal <name>`; urlEnv: env var holding the root URL
     defaultApp: 'web',
-    packs: [],                                      // e.g. require('../Automation.Skills/projects/_projects/<p>/pack')
+    packs: [],                                      // e.g. require('./steps.pack') or a family pack
     helpers: {},                                    // helper name -> repo module exporting it
 };
 ```
 
-`npm install` links the package (`node_modules/steps-core -> ../Automation.Skills/steps-core`), so edits here apply
-to every repo at once. Add the ledger path (`test-data/created.jsonl` by default) to the repo's `.gitignore`.
+Generated specs import `steps-to-specs/runtime/...`. Repos that used the old name (`steps-core`) must switch the
+dependency and run `npm run gen -- --force` once per spec.
+
+Working on the generator itself: clone `Automation.Skills` and use `"steps-to-specs": "file:../Automation.Skills/steps-core"`;
+`npm install` links the package so edits apply at once. Add the ledger path (`test-data/created.jsonl` by default) to
+the repo's `.gitignore`.
+
+Releasing: `npm test`, bump `version` here and in `.claude-plugin/*.json`, then `npm publish` from `steps-core/`
+(`prepack` copies the skill into the tarball).

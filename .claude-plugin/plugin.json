@@ -1,0 +1,8 @@
+{
+  "name": "steps-to-spec",
+  "version": "0.2.0",
+  "description": "Turn plain-text test steps into Playwright specs: probe pages, write steps, generate, run.",
+  "author": { "name": "Parvez Ali" },
+  "repository": "https://github.com/Awesomer9561/Automation.Skills",
+  "keywords": ["playwright", "testing", "e2e", "test-generation"]
+}
