@@ -14,6 +14,17 @@ const { spawnSync } = require('child_process');
 const { generate, loadConfig } = require('..');
 const { loadFlows } = require('../catalog');
 
+// Runs the repo's own Playwright CLI through node, so it behaves the same on macOS, Linux and Windows (spawning `npx`
+// directly fails on Windows, where it is npx.cmd). Falls back to npx (through the shell on Windows) if it can't be resolved.
+function playwrightCommand(root, args) {
+    try {
+        return { cmd: process.execPath, args: [require.resolve('@playwright/test/cli', { paths: [root] }), ...args], shell: false };
+    } catch {
+        const win = process.platform === 'win32';
+        return { cmd: win ? 'npx.cmd' : 'npx', args: ['playwright', ...args], shell: win };
+    }
+}
+
 const input = process.argv[2];
 if (!input) {
     console.error('Usage: npm run probe -- <file.steps.txt>');
@@ -61,8 +72,10 @@ module.exports = {
 let status = 1;
 try {
     const configArgs = repoConfig ? ['--config', path.relative(root, probeConfig)] : [];
-    status = spawnSync('npx', ['playwright', 'test', path.relative(root, spec), ...configArgs, '--reporter=line', ...process.argv.slice(3)], {
-        cwd: root, stdio: 'inherit', env: { ...process.env, PROBE: '1', PROBE_FLOW: base },
+    const args = ['test', path.relative(root, spec), ...configArgs, '--reporter=line', ...process.argv.slice(3)];
+    const pw = playwrightCommand(root, args);
+    status = spawnSync(pw.cmd, pw.args, {
+        shell: pw.shell, cwd: root, stdio: 'inherit', env: { ...process.env, PROBE: '1', PROBE_FLOW: base },
     }).status;
 } finally {
     fs.rmSync(spec, { force: true });

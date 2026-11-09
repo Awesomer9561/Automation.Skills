@@ -5,7 +5,7 @@ description: Generate a Playwright spec from plain-text steps in an automation r
 
 # steps-to-spec
 
-The shared repo holding this skill (`SKILLS=$(cd -P ~/.claude/skills/steps-to-spec/../.. && pwd)`) has:
+The shared repo holding this skill has:
 
 - `steps-core/`: the generator, an npm package each automation repo installs as
   `"steps-core": "file:../Automation.Skills/steps-core"`. Its README covers the IR, packs, config and CLIs.
@@ -17,6 +17,18 @@ labels, button texts and headings of probed pages, never input values or dropdow
 plus `knowledge/flows/<name>.json` for the order one steps file visited them in. Never guess ids; they come from there.
 
 ## Step 0: Load the rules
+
+Works on macOS and Windows. Detect the OS first (`uname -s`, or `$env:OS` / `process.platform`): `Darwin` = macOS,
+`MINGW*`/`MSYS*`/`Windows_NT` = Windows. Locate the shared repo (`$SKILLS`) with Node, which is the same everywhere
+(the skill folder is a symlink on macOS, a junction on Windows; `realpath` resolves both):
+
+```bash
+SKILLS=$(node -e "console.log(require('path').resolve(require('fs').realpathSync(require('os').homedir()+'/.claude/skills/steps-to-spec'),'../..'))")
+```
+
+Windows notes: Git Bash runs the bash snippets as written; in PowerShell use `$env:` for variables, `Get-Content` for `cat`, and
+`2>$null` for `2>/dev/null`. Always build paths with `path.join` in code and write `/` in steps files and docs (Node and Playwright accept it
+on Windows). Never shell out to `open`, `pbcopy`, `osascript`, `sed -i` or `curl`; use Node (`fetch`, `fs`) or Playwright.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)

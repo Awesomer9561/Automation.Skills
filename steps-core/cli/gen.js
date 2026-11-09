@@ -34,7 +34,7 @@ function check(config) {
     const files = fs.existsSync(testsDir) ? fs.readdirSync(testsDir) : [];
     for (const file of files.filter((f) => f.endsWith('.spec.js') && !f.startsWith('_probe_'))) {
         const spec = path.join(testsDir, file);
-        const current = fs.readFileSync(spec, 'utf8');
+        const current = fs.readFileSync(spec, 'utf8').replace(/\r\n/g, '\n');   // git on Windows may check out CRLF
         const header = current.match(GENERATED_RE);
         if (!header) continue;
         checked++;

@@ -11,9 +11,11 @@ it.** A person ticks it once, in their own Chrome, and the tests reuse that brow
 
 1. Start Chrome with a debugging port and a dedicated profile:
    ```bash
-   open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.yopmail-chrome"
+   node <Automation.Skills>/projects/_projects/probuy/chrome-yopmail.js
    ```
-   (a repo can wrap this as an npm script, e.g. `npm run chrome:yopmail` in SupplierPortal.Automation). The port is open only while that
+   It finds Chrome on macOS, Windows and Linux (set `CHROME_PATH` if it is installed somewhere unusual), uses the profile
+   `~/.yopmail-chrome` (`%USERPROFILE%\.yopmail-chrome` on Windows) and port 9222, and does nothing if that Chrome is already
+   running. A repo can wrap it as an npm script, e.g. `npm run chrome:yopmail` in SupplierPortal.Automation. The port is open only while that
    Chrome is running, so repeat this after quitting it or restarting the machine; the profile keeps the Cloudflare tick.
 2. In that window open https://yopmail.com, enter any inbox name, and tick the Cloudflare box if it shows.
 3. In the repo's `.env` add:
@@ -21,7 +23,7 @@ it.** A person ticks it once, in their own Chrome, and the tests reuse that brow
    YOPMAIL_CDP_URL=http://localhost:9222
    ```
 4. Check it (prints whether the human check is showing; never tries to pass it):
-   `curl -s http://localhost:9222/json/version` should answer, and a run of the registration steps should reach the entity number.
+   `node -e "fetch('http://localhost:9222/json/version').then(r=>r.text()).then(console.log)"` should answer, and a run of the registration steps should reach the entity number.
 
 ## Every run
 

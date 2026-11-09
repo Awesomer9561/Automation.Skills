@@ -17,9 +17,19 @@ Generic behaviour goes in the skill or `steps-core`; anything true only for one 
 
 ## Install
 
+macOS / Linux / Git Bash:
 ```bash
 ln -s "$PWD/skills/steps-to-spec" ~/.claude/skills/steps-to-spec   # every repo sees the skill
 ```
+
+Windows (PowerShell; a junction needs no admin rights, unlike `ln -s`/symlinks):
+```powershell
+New-Item -ItemType Junction -Path "$HOME\.claude\skills\steps-to-spec" -Target "$PWD\skills\steps-to-spec"
+```
+
+Needs Node 18+ and Git on both systems. Everything the tools run is Node, so the same `npm run` scripts work in
+PowerShell, cmd, Git Bash and zsh. A `.gitattributes` keeps files LF, and `gen:check` ignores CRLF, so specs generated on
+one OS verify on the other.
 
 Then set up each repo as in `steps-core/README.md` (devDependency + scripts + `steps.config.js`, then `npm install`).
 Keep this repo checked out as a sibling of the automation repos (`../Automation.Skills`).

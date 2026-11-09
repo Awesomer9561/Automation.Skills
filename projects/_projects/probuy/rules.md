@@ -97,7 +97,7 @@ Probes tag each element with its region; narrow a repeated name with `in the <re
 - Email verification: Keycloak sign-up on every portal sends a verification mail. `I verify {email} on yopmail` (pack.js, helper in
   `helpers.js`) opens the yopmail inbox, clicks "Verify Email Address" and returns the test's page to the portal root (`<APP>_URL`).
   Yopmail may show a Cloudflare "Verify you are human" check; the step never tries to pass it. To keep a person's tick: start Chrome with
-  `open -na "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir="$HOME/.yopmail-chrome"`, tick the box once on yopmail.com,
+  `node <Automation.Skills>/projects/_projects/probuy/chrome-yopmail.js` (macOS, Windows, Linux), tick the box once on yopmail.com,
   and set `YOPMAIL_CDP_URL=http://localhost:9222` in the repo's `.env`: the inbox is then read in that window and the test opens the link.
   Full setup: `YOPMAIL-SETUP.md`.
 - Document cards (supplier): registration, resubmission and the profile page show one card per document type the admin configured.
