@@ -129,9 +129,12 @@ async function snapshotPage(page, name, app) {
                 label: isField && !isIdentity(el) ? labelOf(el) : undefined,
                 // visible text only for buttons and sidebar navigation (other links show user names and other data),
                 // and only a single line: a multi-line button is an avatar/name/role block, not a label
-                text: (tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))) && !isIdentity(el)
+                // toast heading/message text is kept too (longer limit): it is what a steps file asserts on, and it is
+                // system wording, not user data. It still goes through redact() below.
+                text: (tag === 'button' || (region === 'sidebar' && /^(side)?nav-/.test(el.id))
+                    || (region === 'toast' && /-(heading|message)$/.test(el.id))) && !isIdentity(el)
                     && !/\n/.test(el.innerText.trim())
-                    ? el.innerText.trim().slice(0, 40) || undefined : undefined,
+                    ? el.innerText.trim().slice(0, region === 'toast' ? 120 : 40) || undefined : undefined,
                 role,
                 clickable: clickable ? true : undefined,
                 readonly: el.readOnly || undefined,
