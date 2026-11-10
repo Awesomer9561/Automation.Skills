@@ -90,8 +90,8 @@ function importPath(module, testsDir) {
     return rel.startsWith('.') ? rel : `./${rel}`;
 }
 
-// opts: { testsDir (absolute), apps (from config) }
-function emit(ir, { testsDir, apps }) {
+// One test(...) block, unindented: the test body for one IR.
+function testLines(ir, apps) {
     const body = [];
     const used = {};                // JS identifier -> count, to keep context/page names unique
     const unique = (base) => {
@@ -135,23 +135,62 @@ function emit(ir, { testsDir, apps }) {
     }
     if (ir.multi && ctxVar) body.push('', `await ${ctxVar}.close();`);
 
-    const lines = [
-        "const { test, expect } = require('@playwright/test');",
-        ...ir.imports.map(({ module, names }) => `const { ${names.join(', ')} } = require('${importPath(module, testsDir)}');`),
-        "require('dotenv').config();",
-        ...(usesEnv(ir, apps) ? ["const missingEnv = (name) => { throw new Error(`${name} is not set (see .env)`); };"] : []),
-        ...urlVars(ir, apps).map((name) => `const ${name} = process.env.${name} || missingEnv('${name}');`),
-        '',
-        `// ${ir.title}`,
-        `// Generated from ${ir.source} by \`npm run gen\`. Do not edit: change the steps file and regenerate.`,
+    return [
         `test(${quote(ir.title)}, async (${ir.multi ? '{ browser }' : '{ page }'}) => {`,
         ...(ir.timeoutMs ? [`    test.setTimeout(${ir.timeoutMs});`] : []),
         ...ir.preamble.flatMap((op) => opLines(op, page, apps)).map((l) => `    ${l}`),
         ...body.map((l) => (l ? `    ${l}` : '')),
         '});',
+    ];
+}
+
+// requires and env constants for the tests in one file; imports merged by module in first-use order
+function headerLines(irs, { testsDir, apps }) {
+    const modules = new Map();
+    for (const { module, names } of irs.flatMap((ir) => ir.imports)) {
+        if (!modules.has(module)) modules.set(module, []);
+        names.filter((n) => !modules.get(module).includes(n)).forEach((n) => modules.get(module).push(n));
+    }
+    const all = { preamble: irs.flatMap((ir) => ir.preamble), steps: irs.flatMap((ir) => ir.steps) };
+    return [
+        "const { test, expect } = require('@playwright/test');",
+        ...[...modules].map(([module, names]) => `const { ${names.join(', ')} } = require('${importPath(module, testsDir)}');`),
+        "require('dotenv').config();",
+        ...(usesEnv(all, apps) ? ["const missingEnv = (name) => { throw new Error(`${name} is not set (see .env)`); };"] : []),
+        ...urlVars(all, apps).map((name) => `const ${name} = process.env.${name} || missingEnv('${name}');`),
         '',
     ];
-    return lines.join('\n');
+}
+
+const generatedLine = (source) => `// Generated from ${source} by \`npm run gen\`. Do not edit: change the steps file and regenerate.`;
+
+// opts: { testsDir (absolute), apps (from config) }
+function emit(ir, opts) {
+    return [
+        ...headerLines([ir], opts),
+        `// ${ir.title}`,
+        generatedLine(ir.source),
+        ...testLines(ir, opts.apps),
+        '',
+    ].join('\n');
+}
+
+// A steps file with variants or an examples table: its tests (one IR each) inside test.describe(<file title>), run in order.
+function emitGroup({ title, source, tests }, opts) {
+    const blocks = tests.map((ir) => testLines(ir, opts.apps).map((l) => (l ? `    ${l}` : '')));
+    return [
+        ...headerLines(tests, opts),
+        `// ${title}`,
+        generatedLine(source),
+        `test.describe(${quote(title)}, () => {`,
+        // one after another in one worker, as the file ran when it was one test (they often share an account), even
+        // under fullyParallel; unlike 'serial', a failing test does not skip the rest
+        "    test.describe.configure({ mode: 'default' });",
+        '',
+        ...blocks.flatMap((b, i) => (i ? ['', ...b] : b)),
+        '});',
+        '',
+    ].join('\n');
 }
 
 const allOps = (ir) => [...ir.preamble, ...ir.steps.flatMap((s) => s.ops)];
@@ -163,4 +202,4 @@ const usesEnv = (ir, apps) => urlVars(ir, apps).length > 0 || allOps(ir).some(ha
 
 const GENERATED_RE = /^\/\/ Generated from (\S+) by `npm run gen`/m;
 
-module.exports = { emit, GENERATED_RE };
+module.exports = { emit, emitGroup, GENERATED_RE };

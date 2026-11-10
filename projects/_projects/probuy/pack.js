@@ -20,19 +20,30 @@ const DOC_INPUT_ID = {
 };
 const slugOf = (title) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-// Open the portal's root, sign in on the Keycloak form, and wait for the form to go.
-const loginOps = (app, email, password, ctx) => {
-    ctx.addWait(2 * LOGIN_MS);
-    return [
+// Open the portal's root, sign in on the Keycloak form, and wait for the form to go. expectSuccess false (a "try to
+// login" with bad credentials) stops after the submit, so the next steps can check the error.
+const loginOps = (app, email, password, ctx, { expectSuccess = true } = {}) => {
+    ctx.addWait((expectSuccess ? 2 : 1) * LOGIN_MS);
+    const ops = [
         { op: 'switchApp', app },
         { op: 'goto', app, path: '/' },
         { op: 'waitFor', target: byId('#login-username-input'), state: 'visible', timeout: LOGIN_MS },
         { op: 'fill', target: byId('#login-username-input'), value: email },
         { op: 'fill', target: byId('#login-password-input'), value: password },
         { op: 'click', target: byId('#login-submit-btn') },
-        // signed in once Keycloak's form is gone; the landing page differs per account
-        { op: 'waitFor', target: byId('#login-password-input'), state: 'hidden', timeout: LOGIN_MS },
     ];
+    // signed in once Keycloak's form is gone; the landing page differs per account
+    if (expectSuccess) ops.push({ op: 'waitFor', target: byId('#login-password-input'), state: 'hidden', timeout: LOGIN_MS });
+    return ops;
+};
+
+// "SUPPLIER_CUSTOM_PLAN" -> .env prefix and portal; null (after reporting) when it names no portal
+const account = (name, ctx) => {
+    const prefix = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const app = prefix.split('_')[0].toLowerCase();
+    if (app) return { prefix, app };
+    ctx.error(`account "${name}" must start with its portal, e.g. "ADMIN" or "SUPPLIER_CUSTOM_PLAN"`);
+    return null;
 };
 
 module.exports = {
@@ -56,13 +67,16 @@ module.exports = {
             usage: 'I login as "ADMIN" user | I login with "SUPPLIER_CUSTOM_PLAN" credentials|account   (the quoted name is the .env prefix: credentials are <NAME>_EMAIL / <NAME>_PASSWORD, and its first word is the portal)',
             pattern: /^(?:i )?(?:log ?in|sign ?in)(?: as| with| using)? (?:the |a |an )?"([^"]+)"(?: user| account| credentials)?$/i,
             build: (m, ctx) => {
-                const prefix = m[1].trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-                const app = prefix.split('_')[0].toLowerCase();
-                if (!app) {
-                    ctx.error(`account "${m[1]}" must start with its portal, e.g. "ADMIN" or "SUPPLIER_CUSTOM_PLAN"`);
-                    return [];
-                }
-                return loginOps(app, { env: `${prefix}_EMAIL` }, { env: `${prefix}_PASSWORD` }, ctx);
+                const acc = account(m[1], ctx);
+                return acc ? loginOps(acc.app, { env: `${acc.prefix}_EMAIL` }, { env: `${acc.prefix}_PASSWORD` }, ctx) : [];
+            },
+        },
+        {
+            usage: 'I try to login as "SUPPLIER_BAD" user | attempt to login with "..." credentials   (fills and submits the login form without waiting to be signed in, for tests that check a login error; credentials from <NAME>_EMAIL / <NAME>_PASSWORD as above)',
+            pattern: /^(?:i )?(?:try|attempt) to (?:log ?in|sign ?in)(?: as| with| using)? (?:the |a |an )?"([^"]+)"(?: user| account| credentials)?$/i,
+            build: (m, ctx) => {
+                const acc = account(m[1], ctx);
+                return acc ? loginOps(acc.app, { env: `${acc.prefix}_EMAIL` }, { env: `${acc.prefix}_PASSWORD` }, ctx, { expectSuccess: false }) : [];
             },
         },
         {

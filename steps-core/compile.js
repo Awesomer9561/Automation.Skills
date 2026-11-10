@@ -11,6 +11,7 @@ const { loadCatalog, loadFlows, knownIds, isKnown } = require('./catalog');
 const { createResolver } = require('./resolve');
 const { CORE_HELPERS, PAGE, V } = require('./intents');
 const { regionsFor, cssFor } = require('./regions');
+const { flowName } = require('./scenarios');
 
 // actions that touch an element; in a probe each is preceded by autoSnapshot so every page reached is recorded
 const ACTIONS = ['fill', 'type', 'click', 'check', 'select', 'upload'];
@@ -33,17 +34,21 @@ function helpersOf(op) {
 }
 
 // opts.probe: compiling for `npm run probe` (unknown labels are looked up at run time, pages are recorded)
-function compile({ title, steps, source }, config, opts = {}) {
+// flow: the probe flow this test records and resolves names from (scenarios.js); defaults to the steps file's name. A
+// test of a file that gained variants falls back to the file's own flow until it is probed again.
+function compile({ title, steps, source, flow }, config, opts = {}) {
     const registry = buildRegistry(config.packs);
     const catalog = loadCatalog(config);
-    const flow = path.basename(source).replace(/\.steps\.txt$|\.txt$|\.md$/, '');
-    const resolver = createResolver(catalog, { flowData: loadFlows(config)[flow] });
+    const fileFlow = flowName(path.basename(source).replace(/\.steps\.txt$|\.txt$|\.md$/, ''));
+    const flows = loadFlows(config);
+    const resolver = createResolver(catalog, { flowData: flows[flow || fileFlow] || flows[fileFlow] });
     const ids = knownIds(catalog);
     const errors = [];
     const warnings = [];
     const unmatched = [];
     const declared = new Set();
-    const preamble = [];
+    // a probe tells the snapshot runtime which flow this test records (a file with variants records one per test)
+    const preamble = opts.probe ? [{ op: 'call', fn: 'startFlow', args: [V(flow || fileFlow)] }] : [];
     const out = [];
     let budgetMs = 0;
     let app = config.defaultApp;

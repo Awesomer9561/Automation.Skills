@@ -36,3 +36,13 @@ test('document card upload builds the card input id from the title (supplier onl
         [{ op: 'upload', target: { id: 'profile-documents-zakat-and-tax-certificate-upload-input' }, file: V('./documents/a.pdf') }]);
     assert.throws(() => build('I upload "documents/a.pdf" to document "Zakat And Tax Certificate"', 'company'), /not mapped/);
 });
+
+test('try to login submits the form without waiting to be signed in', () => {
+    const tried = build('I try to login as "SUPPLIER_BAD" user');
+    const ok = build('I login as "SUPPLIER_BAD" user');
+    assert.deepEqual(tried, ok.slice(0, -1));
+    assert.deepEqual(ok[ok.length - 1], { op: 'waitFor', target: { id: 'login-password-input' }, state: 'hidden', timeout: 60000 });
+    assert.equal(tried[0].app, 'supplier');
+    assert.deepEqual(tried.find((op) => op.op === 'fill').value, { env: 'SUPPLIER_BAD_EMAIL' });
+    assert.ok(build('attempt to sign in with "company" credentials').length);
+});

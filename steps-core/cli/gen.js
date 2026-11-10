@@ -24,6 +24,8 @@ function listSteps(config) {
     }
     console.log(`# apps: ${Object.keys(config.apps).join(', ')}   generators: ${Object.keys(registry.generators).join(', ')}`);
     console.log(`# variables created automatically when used: ${Object.keys(registry.autoVars).map((v) => `{${v}}`).join(', ') || 'none'}`);
+    console.log('# variations: "# variant: <name>" blocks (shared steps above the first one), and/or "# examples:" with a');
+    console.log('#   | input | assertion | table of whole steps (optional name column); each variant or row is its own test');
 }
 
 // Regenerates every spec carrying the "Generated from" header and reports any that differ from their source.

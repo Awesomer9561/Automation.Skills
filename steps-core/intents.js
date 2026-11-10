@@ -300,8 +300,8 @@ const PHRASINGS = [
         build: (m) => [{ op: 'expectVisible', target: textTarget(m[1], m[2]) }],
     },
     {
-        usage: 'I should see "text" [in the header] [up to 30 seconds]',
-        pattern: new RegExp(`^(?:i )?should see (?:the text )?${Q}${REGION}${UP_TO}$`, 'i'),
+        usage: 'I should see "text" [in the header] [up to 30 seconds]   (also: I see "text")',
+        pattern: new RegExp(`^(?:i )?(?:should )?see (?:the text )?${Q}${REGION}${UP_TO}$`, 'i'),
         build: (m, ctx) => [{ op: 'expectVisible', target: textTarget(m[1], m[2]), timeout: waitMs(ctx, m[3], m[4]) }],
     },
     {
@@ -332,6 +332,7 @@ const PKG = require('./package.json').name;
 const CORE_HELPERS = {
     snapshotPage: `${PKG}/runtime/snapshot`,
     autoSnapshot: `${PKG}/runtime/snapshot`,
+    startFlow: `${PKG}/runtime/snapshot`,
     recordCreated: `${PKG}/runtime/ledger`,
     probeFill: `${PKG}/runtime/labels`,
     probeClick: `${PKG}/runtime/labels`,

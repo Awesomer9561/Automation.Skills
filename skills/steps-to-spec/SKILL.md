@@ -79,6 +79,17 @@ QA writes steps the way they read the screen; the generator turns them into an i
    I click {orderNumber}          (a card in a list, e.g. the order created earlier in the test)
    I should see "Account is in the verification process" up to 30 seconds
    ```
+   **Several versions of one test** go in one file, each its own test in the spec. Different steps per case (wrong
+   vs valid login): `# variant: <name>` blocks after the shared steps. The same steps with different actions/checks
+   (each status filter): an `# examples:` table whose cells are whole steps:
+   ```
+   # examples:
+   | input               | assertion                 |
+   | I click "Pending"   | I should see "All orders" |
+   | I click "Cancelled" | I should see "All orders" |
+   ```
+   A table inside a variant applies to that variant only; `name` is an optional title column. Each test probes into its
+   own flow; probe one with `npm run probe -- <file> -g "<test title>"`.
    `npm run gen:list` shows every phrasing (core, plus pack one-liners like `I login as "SUPPLIER" user`). Credentials:
    `set {x} to env NAME`. A test that creates data ends with `record <type> {key}`. `#id` steps still work but are
    rarely needed.

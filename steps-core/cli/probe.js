@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Runs a steps file in probe mode and records every page it reaches into <knowledgeDir>/pages/.
 //   npm run probe -- steps/supplier_registration.txt [--headed]   (extra args go to playwright test)
+//   npm run probe -- steps/login.txt -g "wrong password"          (one variant / examples row of a file)
 //
 // Any steps file works, including the one QA wrote for the test: steps that name fields and buttons by label/text
 // ("I enter "Abdul" in First name", "I click "Get OTP"") are looked up in the live page, and each new page is
@@ -12,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { generate, loadConfig } = require('..');
-const { loadFlows } = require('../catalog');
+const { loadFlows, flowsDir } = require('../catalog');
 
 // Runs the repo's own Playwright CLI through node, so it behaves the same on macOS, Linux and Windows (spawning `npx`
 // directly fails on Windows, where it is npx.cmd). Falls back to npx (through the shell on Windows) if it can't be resolved.
@@ -33,15 +34,24 @@ if (!input) {
 
 const config = loadConfig();
 
-const { base, code, unmatched, errors } = generate(input, config, { title: (t) => `Probe: ${t}`, probe: true });
+const { base, code, unmatched, errors, scenarios } = generate(input, config, { title: (t) => `Probe: ${t}`, probe: true });
 if (unmatched.length || errors.length) {
     [...errors, ...unmatched.map((s) => `unmatched step on line ${s.line}: ${s.text}`)].forEach((e) => console.error(`error: ${e}`));
     process.exit(1);
 }
 
-// Pages are shared by all steps files and updated by each probe; only this file's flow (visit order and resolved
-// names) is replaced, by the first snapshot of the run.
+// Pages are shared by all steps files and updated by each probe; only this file's flows (visit order and resolved
+// names) are replaced, each by the first snapshot of its test. A file with variants or an examples table has one flow
+// per test (<base>--<test>); flows of tests that no longer exist (renamed or removed variants/rows) are deleted.
 const flow = base.replace(/[^\w-]+/g, '-');
+const testFlows = scenarios.map((sc) => sc.flow);
+const flowDir = flowsDir(config);
+if (fs.existsSync(flowDir)) {
+    for (const f of fs.readdirSync(flowDir)) {
+        const name = f.replace(/\.json$/, '');
+        if (name.startsWith(`${flow}--`) && !testFlows.includes(name)) fs.rmSync(path.join(flowDir, f));
+    }
+}
 
 const root = config.root;
 const spec = path.join(config.abs(config.testsDir), `_probe_${base}.spec.js`);
@@ -65,6 +75,9 @@ module.exports = {
     globalTeardown: undefined,
     testIgnore: [],
     retries: 0,
+    // tests of one steps file (variants, examples rows) run one after another so they don't race on the page records
+    workers: 1,
+    fullyParallel: false,
     use: { ...(repo.use || {}), storageState: { cookies: [], origins: [] } },
 };
 `);
@@ -84,6 +97,11 @@ try {
     if (!hadResults && status === 0) fs.rmSync(path.join(root, 'test-results'), { recursive: true, force: true });
 }
 if (status !== 0) console.error('\nProbe failed; screenshot and trace are in test-results/. Snapshots reached before the failure were still recorded.');
-const visits = ((loadFlows(config)[flow] || {}).visits || []).map((v) => `${v.page} ${v.state}`);
-console.log(`\nProbed ${visits.length} page visit(s) for ${base}:\n  ${visits.join('\n  ')}\n(see: npm run gen:ids -- <page>)`);
+const flows = loadFlows(config);
+for (const sc of scenarios) {
+    const visits = ((flows[sc.flow] || {}).visits || []).map((v) => `${v.page} ${v.state}`);
+    const label = scenarios.length > 1 || sc.flow !== flow ? `${base} / ${sc.title}` : base;
+    console.log(`\nProbed ${visits.length} page visit(s) for ${label}:\n  ${visits.join('\n  ')}`);
+}
+console.log('(see: npm run gen:ids -- <page>)');
 process.exit(status === null ? 1 : status);   // null: killed by a signal or failed to start

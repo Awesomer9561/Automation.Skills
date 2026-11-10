@@ -56,10 +56,20 @@ function cardFamilies(elements) {
 // fails part-way keeps what it reached. The pages themselves are shared by all steps files (see pages.js); this is
 // only the order they were visited in and the names the steps resolved, which lets `gen` tell apart elements that
 // share a label ("Email Address" on two wizard steps).
-const flow = () => (process.env.PROBE_FLOW || 'probe').replace(/[^\w-]+/g, '-');
+// A steps file with variants or an examples table records one flow per test: each test starts with startFlow(name).
+let current = null;
+const flow = () => (current || process.env.PROBE_FLOW || 'probe').replace(/[^\w-]+/g, '-');
 const visits = [];
 const names = [];
 let lastIds = null;     // visible ids of the last snapshot, to notice when the page has changed
+
+// Starts recording a new flow (one test of a probe): the visits and names that follow go to <knowledgeDir>/flows/<name>.json.
+function startFlow(name) {
+    current = name;
+    visits.length = 0;
+    names.length = 0;
+    lastIds = null;
+}
 
 function writeFlow() {
     const dir = flowsDir(loadConfig());
@@ -202,4 +212,4 @@ function noteName(kind, name, id) {
     writeFlow();
 }
 
-module.exports = { snapshotPage, autoSnapshot, noteName, visibleIds, redact, cardFamilies };
+module.exports = { snapshotPage, autoSnapshot, startFlow, noteName, visibleIds, redact, cardFamilies };

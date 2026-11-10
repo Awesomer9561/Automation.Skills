@@ -18,7 +18,7 @@ const ALIASES = {
     sidebar: ['sidebar', 'side bar', 'sidenav', 'side nav', 'side menu', 'left menu'],
     header: ['header', 'app header', 'page header', 'top bar', 'topbar', 'top nav'],
     modal: ['modal', 'dialog', 'popup', 'pop-up', 'popup dialog'],
-    toast: ['toast', 'toast message', 'notification', 'snackbar'],
+    toast: ['toast', 'toast message', 'notification', 'snackbar', 'error toast', 'success toast'],
 };
 
 const MAIN = 'main';

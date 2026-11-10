@@ -44,6 +44,26 @@ steps file ─ parse.js ─► compile.js ──► IR ──► emit-playwright
 - **Split inputs** (OTP boxes): `I enter OTP "2024"` fills one character per box; `I enter 2 in OTP field 1` fills
   one box (`field|box|digit|input|cell N`; a {var} here must be one character). Both resolve by the boxes' labels.
 
+- **Variants and examples** (`parse.js`, `scenarios.js`): one steps file can declare several tests. `# variant: <name>`
+  starts a variant; the steps above the first one are shared and run first in each. `# examples:` followed by a
+  `| input | assertion |` table makes one test per row; each cell is a whole step, so it resolves like any other line
+  (columns may repeat for more steps; an optional `name` column titles the row; `\|` is a literal pipe). A table belongs
+  to its block: the whole file, or one variant. The spec wraps the tests in `test.describe(<file title>)` with
+  `mode: 'default'` (one after another in one worker, even under `fullyParallel`; a failure does not skip the rest). A file
+  without either is generated exactly as before. Each test probes into its own flow, `flows/<file>--<test title slug>.json`
+  (falling back to `flows/<file>.json`); `npm run probe -- <file> -g "<title>"` probes one.
+  ```
+  # test: Supplier login                       # test: Each orders status filter applies
+  I open supplier portal                       I login as "SUPPLIER" user
+                                               I click "Orders" in the sidebar
+  # variant: wrong password
+  I try to login as "SUPPLIER_BAD" user        # examples:
+  I should see "Invalid Credentials"           | input              | assertion                 |
+                                               | I click "Pending"  | I should see "All orders" |
+  # variant: valid account                     | I click "Accepted" | I should see "All orders" |
+  I login as "SUPPLIER" user
+  I wait till url /dashboard
+  ```
 - **IR** (op list at the top of `intents.js`) is plain data: ids, values with `{var}`s, helper names. No code. The
   emitter is the only Playwright-aware module; another emitter (e.g. playwright-bdd) can consume the same IR.
 - **Generators** (`set {name} to random <kind>`): the core has `random name` (8 letters, first one capital, new every run;
