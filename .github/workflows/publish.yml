@@ -1,0 +1,58 @@
+# Release: Actions -> "Publish to npm" -> Run workflow -> pick patch / minor / major (or type an exact x.y.z).
+# Bumps the version in package.json and the plugin manifests, tests, publishes steps-to-specs to npm,
+# then commits "Release vX.Y.Z" and tags it on the branch it was run from.
+#
+# One-time npm setup (no token needed): npmjs.com -> steps-to-specs -> Settings -> Trusted Publisher -> GitHub Actions,
+# owner Awesomer9561, repository Automation.Skills, workflow filename publish.yml.
+# If `main` is protected against direct pushes, the final push step fails: allow github-actions[bot] to bypass, or
+# release from a branch and merge it.
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: patch, minor, major, or an exact version such as 1.0.0
+        required: true
+        default: patch
+
+permissions:
+  contents: write      # push the release commit and tag
+  id-token: write      # npm trusted publishing (OIDC)
+
+concurrency: publish
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm i -g npm@latest          # trusted publishing needs npm 11.5.1 or later
+
+      - name: Test
+        working-directory: steps-core
+        run: npm test
+
+      - name: Bump version
+        id: bump
+        working-directory: steps-core
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: echo "version=$(node scripts/bump-version.js "$BUMP")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        working-directory: steps-core
+        run: npm publish      # prepack copies the skill into the tarball; provenance is attached automatically
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add steps-core/package.json .claude-plugin
+          git commit -m "Release v${{ steps.bump.outputs.version }}"
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin HEAD "v${{ steps.bump.outputs.version }}"
