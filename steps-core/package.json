@@ -1,6 +1,6 @@
 {
   "name": "steps-to-specs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Plain-text steps -> IR -> Playwright spec, driven by the consuming repo's steps.config.js. Ships the steps-to-spec Claude skill.",
   "keywords": ["playwright", "test-generation", "claude-code", "claude-skill", "e2e"],
   "main": "index.js",
