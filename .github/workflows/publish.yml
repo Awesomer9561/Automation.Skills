@@ -1,6 +1,8 @@
-# Release: Actions -> "Publish to npm" -> Run workflow -> pick patch / minor / major (or type an exact x.y.z).
-# Bumps the version in package.json and the plugin manifests, tests, publishes steps-to-specs to npm,
-# then commits "Release vX.Y.Z" and tags it on the branch it was run from.
+# Release: runs by itself on every merge to main that changes the package or the skill, and bumps the PATCH version.
+# For a minor/major/exact version run it by hand: Actions -> "Publish to npm" -> Run workflow -> bump.
+# Each run bumps the version in package.json and the plugin manifests, tests, publishes steps-to-specs to npm,
+# then commits "Release vX.Y.Z" and tags it. That commit is pushed with the workflow's own token, which GitHub never
+# uses to start another run, so it cannot loop.
 #
 # One-time npm setup (no token needed): npmjs.com -> steps-to-specs -> Settings -> Trusted Publisher -> GitHub Actions,
 # owner Awesomer9561, repository Automation.Skills, workflow filename publish.yml.
@@ -9,6 +11,11 @@
 name: Publish to npm
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'steps-core/**'
+      - 'skills/**'
   workflow_dispatch:
     inputs:
       bump:
@@ -20,10 +27,13 @@ permissions:
   contents: write      # push the release commit and tag
   id-token: write      # npm trusted publishing (OIDC)
 
-concurrency: publish
+concurrency:
+  group: publish
+  cancel-in-progress: false   # queue releases, never cancel one that is publishing
 
 jobs:
   publish:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +51,7 @@ jobs:
         id: bump
         working-directory: steps-core
         env:
-          BUMP: ${{ inputs.bump }}
+          BUMP: ${{ inputs.bump || 'patch' }}
         run: echo "version=$(node scripts/bump-version.js "$BUMP")" >> "$GITHUB_OUTPUT"
 
       - name: Publish
